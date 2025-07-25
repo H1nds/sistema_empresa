@@ -3,9 +3,7 @@ import { db } from "../services/firebase";
 import {
     collection,
     addDoc,
-    getDocs,
     onSnapshot,
-    Timestamp
 } from "firebase/firestore";
 import { deleteDoc, doc } from "firebase/firestore";
 import { updateDoc } from "firebase/firestore";
@@ -393,7 +391,7 @@ export const Ventas = () => {
                 </AnimatePresence>
             </div>
 
-            <div>
+               <div>
                 <h3 className="text-xl font-semibold mb-2">Ventas registradas</h3>
                 <div className="mt-4 text-right">
                     <motion.button
@@ -406,9 +404,11 @@ export const Ventas = () => {
                         <Maximize2 className="w-6 h-6" />
                     </motion.button>
                 </div>
-                <table className="w-full border border-gray-300 rounded text-left">
-                    <thead className="bg-gray-200">
-                        <tr>
+                <div className="w-full overflow-x-auto">
+                    <div className="min-w-[1200px] max-h-[60vh] overflow-y-auto">
+                        <table className="min-w-full table-auto text-sm text-center border-separate border-spacing-0">
+                            <thead className="sticky top-0 z-10 bg-white shadow-sm">
+                            <tr className="bg-gray-200 border-b border-gray-300 text-gray-700 text-sm uppercase">
                             <th className="p-2">Cliente</th>
                             <th className="p-2">Servicio</th>
                             <th className="p-2">Moneda</th>
@@ -657,7 +657,9 @@ export const Ventas = () => {
                             </tr>
                         )}
                     </tbody>
-                </table>
+                        </table>
+                    </div>
+                </div>
 
                 <AnimatePresence>
                     {ventaAEliminar && (
