@@ -1,18 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { db } from "../services/firebase";
 import {
     collection,
     addDoc,
     onSnapshot,
 } from "firebase/firestore";
-import { deleteDoc, doc } from "firebase/firestore";
+import { deleteDoc, doc, Timestamp } from "firebase/firestore";
 import { updateDoc } from "firebase/firestore";
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from "framer-motion";
-import { Pencil, Trash2, Save, X, Maximize2 } from "lucide-react";
+import { Pencil, Trash2, Save, X, Maximize2, FileDown, FileUp, FilePlus2 } from "lucide-react";
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
+import ExcelJS from "exceljs";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface Venta {
     id: string;
+    area: string;
     cliente: string;
     servicio: string;
     moneda: "S/" | "$";
@@ -20,31 +26,33 @@ interface Venta {
     mesServicio: string;
     fechaFactura: string;
     fechaPagoCtaCte: string;
-    abonoCtaCte: number;
-    fechaPagoDeducible: number;
-    igvdeducible: number;
-    subtotal: number;
-    igv: number;
-    total: number;
+    abonoCtaCte: number | "";
+    fechaPagoDeducible: number | "";
+    igvdeducible: number | "";
+    subtotal: number | "";
+    igv: number | "";
+    total: number | "";
 }
 
 export const Ventas = () => {
+    const tablaRef = useRef<HTMLTableElement>(null);
     const [ventas, setVentas] = useState<Venta[]>([]);
     const [nuevaVenta, setNuevaVenta] = useState<Venta>({
         id: "",
         cliente: "",
+        area: "",
         servicio: "",
         moneda: "S/",
         comprobante: "",
         mesServicio: "",
         fechaFactura: "",
         fechaPagoCtaCte: "",
-        abonoCtaCte: 0,
-        fechaPagoDeducible: 0,
-        igvdeducible: 0,
-        subtotal: 0,
-        igv: 0,
-        total: 0,
+        abonoCtaCte: "",
+        fechaPagoDeducible: "",     
+        igvdeducible: "",
+        subtotal: "",
+        igv: "",
+        total: "",
     });
 
     const ventasRef = collection(db, "ventas");
@@ -52,6 +60,7 @@ export const Ventas = () => {
     const agregarVenta = async () => {
         const {
             cliente,
+            area,
             servicio,
             moneda,
             comprobante,
@@ -69,6 +78,7 @@ export const Ventas = () => {
         // Validaciones básicas
         if (
             !cliente ||
+            !area ||
             !servicio ||
             !comprobante ||
             !mesServicio ||
@@ -88,6 +98,7 @@ export const Ventas = () => {
         try {
             await addDoc(ventasRef, {
                 cliente,
+                area,
                 servicio,
                 moneda,
                 comprobante,
@@ -106,6 +117,7 @@ export const Ventas = () => {
             setNuevaVenta({
                 id: "",
                 cliente: "",
+                area: "",
                 servicio: "",
                 moneda: "S/",
                 comprobante: "",
@@ -136,8 +148,8 @@ export const Ventas = () => {
 
         setNuevaVenta((prev) => ({
             ...prev,
-            [name]: name == "abonoCtaCte" || name == "fechaPagoDeducible" || name == "igvdeducible" || name === "subtotal" || name === "igv" || name === "total"
-                ? parseFloat(value)
+            [name]: ["abonoCtaCte", "fechaPagoDeducible", "igvdeducible", "subtotal", "igv", "total"].includes(name)
+                ? value === "" ? "" : parseFloat(value)
                 : value,
         }));
     };
@@ -153,9 +165,170 @@ export const Ventas = () => {
         }
     };
 
+    const handleImportarExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data);
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
+
+        const nuevasVentas = jsonData.map((row) => ({
+            ...row,
+            abonoCtaCte: parseFloat(row["Abono CTA. CTE"]) || 0,
+            fechaPagoDeducible: parseFloat(row["F. Abono CTA. DETRAC"]) || 0,
+            igvdeducible: parseFloat(row["IGV CTA. DETRAC"]) || 0,
+            subtotal: parseFloat(row["Subtotal"]) || 0,
+            igv: parseFloat(row["IGV"]) || 0,
+            total: parseFloat(row["Total"]) || 0,
+            fechaCreacion: Timestamp.now(),
+        }));
+
+        try {
+            for (const venta of nuevasVentas) {
+                await addDoc(ventasRef, venta);
+            }
+            toast.success("Ventas importadas correctamente.");
+        } catch (err) {
+            console.error("Error importando ventas:", err);
+            toast.error("Ocurrió un error al importar.");
+        }
+    };
+
+    const handleExportarExcel = async () => {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet("Ventas");
+
+        const columns = [
+            { header: "Cliente", key: "cliente" },
+            { header: "Area", key: "area" },
+            { header: "Servicio", key: "servicio" },
+            { header: "Moneda", key: "moneda" },
+            { header: "N° Comprobante", key: "comprobante" },
+            { header: "Mes Servicio", key: "mesServicio" },
+            { header: "Fecha Factura", key: "fechaFactura" },
+            { header: "F. Abono CTA. CTE", key: "fechaPagoCtaCte" },
+            { header: "Abono CTA. CTE", key: "abonoCtaCte" },
+            { header: "F. Abono CTA. DETRAC", key: "fechaPagoDeducible" },
+            { header: "IGV CTA. DETRAC", key: "igvdeducible" },
+            { header: "Subtotal", key: "subtotal" },
+            { header: "IGV", key: "igv" },
+            { header: "Total", key: "total" },
+        ];
+
+        worksheet.columns = columns;
+
+        worksheet.addRows(ventas);
+
+        // Estilo de encabezado
+        worksheet.getRow(1).eachCell((cell) => {
+            cell.font = { bold: true };
+            cell.alignment = { vertical: "middle", horizontal: "center" };
+            cell.fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFEFEFEF" },
+            };
+            cell.border = {
+                top: { style: "thin" },
+                bottom: { style: "thin" },
+                left: { style: "thin" },
+                right: { style: "thin" },
+            };
+        });
+
+        // Estilo para todas las celdas
+        worksheet.eachRow((row, rowNumber) => {
+            row.eachCell((cell) => {
+                cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+                cell.border = {
+                    top: { style: "thin" },
+                    bottom: { style: "thin" },
+                    left: { style: "thin" },
+                    right: { style: "thin" },
+                };
+            });
+        });
+
+        // Ajuste automático de columnas
+        worksheet.columns.forEach((column) => {
+            let maxLength = 0;
+            column.eachCell?.({ includeEmpty: true }, (cell) => {
+                const text = cell.value ? cell.value.toString() : "";
+                maxLength = Math.max(maxLength, text.length);
+            });
+            column.width = maxLength + 5;
+        });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        saveAs(new Blob([buffer]), "ventas.xlsx");
+    };
+
+    const handleExportarPDF = () => {
+        const doc = new jsPDF("l", "pt", "a4");
+
+        doc.text("Ventas Registradas", 40, 30);
+
+        const columnasExportar = [
+            { header: "Cliente", dataKey: "cliente" },
+            { header: "Area", dataKey: "area" },
+            { header: "Servicio", dataKey: "servicio" },
+            { header: "Moneda", dataKey: "moneda" },
+            { header: "N° Comprobante", dataKey: "comprobante" },
+            { header: "Mes de Servicio", dataKey: "mesServicio" },
+            { header: "Fecha Factura", dataKey: "fechaFactura" },
+            { header: "Pago CTA. CTE", dataKey: "fechaPagoCtaCte" },
+            { header: "Abono CTA. CTE", dataKey: "abonoCtaCte" },
+            { header: "Pago CTA. DETRAC", dataKey: "fechaPagoDeducible" },
+            { header: "IGV CTA. DETRAC", dataKey: "igvdeducible" },
+            { header: "Subtotal", dataKey: "subtotal" },
+            { header: "IGV", dataKey: "igv" },
+            { header: "Total", dataKey: "total" },
+        ];
+
+        const filas = ventas.map((venta) => ({
+            cliente: venta.cliente || "",
+            area: venta.area || "",
+            servicio: venta.servicio || "",
+            moneda: venta.moneda || "",
+            comprobante: venta.comprobante || "",
+            mesServicio: venta.mesServicio || "",
+            fechaFactura: venta.fechaFactura || "",
+            fechaPagoCtaCte: venta.fechaPagoCtaCte || "",
+            abonoCtaCte: venta.abonoCtaCte?.toFixed(2) || "",
+            fechaPagoDeducible: venta.fechaPagoDeducible?.toFixed(2) || "",
+            igvdeducible: venta.igvdeducible?.toFixed(2) || "",
+            subtotal: venta.subtotal?.toFixed(2) || "",
+            igv: venta.igv?.toFixed(2) || "",
+            total: venta.total?.toFixed(2) || "",
+        }));
+
+        autoTable(doc, {
+            head: [columnasExportar.map((col) => col.header)],
+            body: filas.map((row) => columnasExportar.map((col) => row[col.dataKey])),
+            startY: 50,
+            styles: {
+                fontSize: 8,
+                halign: "center",
+            },
+            headStyles: {
+                fillColor: [41, 128, 185],
+                textColor: "#ffffff",
+                fontStyle: "bold",
+            },
+            alternateRowStyles: {
+                fillColor: [245, 245, 245],
+            },
+        });
+
+        doc.save("ventas.pdf");
+    };
+
     const guardarEdicion = async (id: string) => {
         const {
             cliente,
+            area,
             servicio,
             moneda,
             comprobante,
@@ -173,6 +346,7 @@ export const Ventas = () => {
         // Validaciones
         if (
             !cliente ||
+            !area ||
             !servicio ||
             !moneda ||
             !comprobante ||
@@ -194,6 +368,7 @@ export const Ventas = () => {
             const docRef = doc(db, "ventas", id);
             await updateDoc(docRef, {
                 cliente,
+                area,
                 servicio,
                 moneda,
                 comprobante,
@@ -276,7 +451,15 @@ export const Ventas = () => {
                                     className="border p-2 rounded"
                                     value={nuevaVenta.cliente}
                                     onChange={handleInputChange}
-                                />
+                                    />
+                                <input
+                                    type="text"
+                                    name="area"
+                                    placeholder="Area"
+                                    className="border p-2 rounded"
+                                    value={nuevaVenta.area}
+                                    onChange={handleInputChange}
+                                    />
                                 <input
                                     type="text"
                                     name="servicio"
@@ -393,6 +576,42 @@ export const Ventas = () => {
 
                <div>
                 <h3 className="text-xl font-semibold mb-2">Ventas registradas</h3>
+                <div className="flex gap-4 mb-4 items-center">
+                    {/* Importar Excel */}
+                    <motion.label
+                        className="cursor-pointer p-2 rounded hover:bg-gray-100"
+                        whileHover={{ scale: 1.1 }}
+                        title="Importar Excel"
+                    >
+                        <FilePlus2 className="w-5 h-5" />
+                        <input
+                            type="file"
+                            accept=".xlsx, .xls"
+                            className="hidden"
+                            onChange={handleImportarExcel}
+                        />
+                    </motion.label>
+
+                    {/* Exportar Excel */}
+                    <motion.button
+                        onClick={handleExportarExcel}
+                        className="p-2 rounded hover:bg-gray-100"
+                        whileHover={{ scale: 1.1 }}
+                        title="Exportar Excel"
+                    >
+                        <FileDown className="w-5 h-5" />
+                    </motion.button>
+
+                    {/* Exportar PDF */}
+                    <motion.button
+                        onClick={handleExportarPDF}
+                        className="p-2 rounded hover:bg-gray-100"
+                        whileHover={{ scale: 1.1 }}
+                        title="Exportar PDF"
+                    >
+                        <FileUp className="w-5 h-5" />
+                    </motion.button>
+                </div>
                 <div className="mt-4 text-right">
                     <motion.button
                         onClick={() => setMostrarTablaExpandida(true)}
@@ -406,18 +625,22 @@ export const Ventas = () => {
                 </div>
                 <div className="w-full overflow-x-auto">
                     <div className="min-w-[1200px] max-h-[60vh] overflow-y-auto">
-                        <table className="min-w-full table-auto text-sm text-center border-separate border-spacing-0">
+                        <table
+                            ref={tablaRef}
+                            className="min-w-full table-auto text-sm text-center border-separate border-spacing-0"
+                        >
                             <thead className="sticky top-0 z-10 bg-white shadow-sm">
                             <tr className="bg-gray-200 border-b border-gray-300 text-gray-700 text-sm uppercase">
                             <th className="p-2">Cliente</th>
+                            <th className="p-2">Area</th>
                             <th className="p-2">Servicio</th>
                             <th className="p-2">Moneda</th>
                             <th className="p-2">N° Comprobante</th>
                             <th className="p-2">Mes de Servicio</th>
                             <th className="p-2">Fecha Factura</th>
-                            <th className="p-2">Pago CTA. CTE</th>
+                            <th className="p-2">F. Abono CTA. CTE</th>
                             <th className="p-2">Abono CTA. CTE</th>
-                            <th className="p-2">Pago CTA. DETRAC</th>
+                            <th className="p-2">F. Abono CTA. DETRAC</th>
                             <th className="p-2">IGV CTA. DETRAC</th>
                             <th className="p-2">Subtotal</th>
                             <th className="p-2">IGV</th>
@@ -436,6 +659,16 @@ export const Ventas = () => {
                                                 value={ventaEditada.cliente ?? venta.cliente}
                                                 onChange={(e) =>
                                                     setVentaEditada((prev) => ({ ...prev, cliente: e.target.value }))
+                                                }
+                                                className="border p-1 rounded w-full"
+                                            />
+                                        </td>
+                                        <td className="p-2">
+                                            <input
+                                                type="text"
+                                                value={ventaEditada.area ?? venta.area}
+                                                onChange={(e) =>
+                                                    setVentaEditada((prev) => ({ ...prev, area: e.target.value }))
                                                 }
                                                 className="border p-1 rounded w-full"
                                             />
@@ -611,18 +844,43 @@ export const Ventas = () => {
                                 ) : (
                                     <>
                                         <td className="p-2">{venta.cliente}</td>
+                                        <td className="p-2">{venta.area}</td>
                                         <td className="p-2">{venta.servicio}</td>
                                         <td className="p-2">{venta.moneda}</td>
                                         <td className="p-2">{venta.comprobante}</td>
                                         <td className="p-2">{venta.mesServicio}</td>
                                         <td className="p-2">{venta.fechaFactura}</td>
                                         <td className="p-2">{venta.fechaPagoCtaCte}</td>
-                                        <td className="p-2">{venta.abonoCtaCte.toFixed(2)}</td>
-                                        <td className="p-2">{venta.fechaPagoDeducible.toFixed(2)}</td>
-                                        <td className="p-2">{venta.igvdeducible.toFixed(2)}</td>
-                                        <td className="p-2">{venta.subtotal.toFixed(2)}</td>
-                                        <td className="p-2">{venta.igv.toFixed(2)}</td>
-                                        <td className="p-2 font-semibold">{venta.total.toFixed(2)}</td>
+                                            <td className="p-2">
+                                                {typeof venta.abonoCtaCte === "number"
+                                                    ? venta.abonoCtaCte.toFixed(2)
+                                                    : "-"}
+                                            </td>
+                                            <td className="p-2">
+                                                {typeof venta.fechaPagoDeducible === "number"
+                                                    ? venta.fechaPagoDeducible.toFixed(2)
+                                                    : "-"}
+                                            </td>
+                                            <td className="p-2">
+                                                {typeof venta.igvdeducible === "number"
+                                                    ? venta.igvdeducible.toFixed(2)
+                                                    : "-"}
+                                            </td>
+                                            <td className="p-2">
+                                                {typeof venta.subtotal === "number"
+                                                    ? venta.subtotal.toFixed(2)
+                                                    : "-"}
+                                            </td>
+                                            <td className="p-2">
+                                                {typeof venta.igv === "number"
+                                                    ? venta.igv.toFixed(2)
+                                                    : "-"}
+                                            </td>
+                                            <td className="p-2">
+                                                {typeof venta.total === "number"
+                                                    ? venta.total.toFixed(2)
+                                                    : "-"}
+                                            </td>
                                             <td className="p-2">
                                                 <div className="flex flex-col items-center gap-1">
                                                     <button
@@ -730,14 +988,15 @@ export const Ventas = () => {
                     <thead className="bg-gray-200">
                         <tr>
                             <th className="p-2">Cliente</th>
+                            <th className="p-2">Area</th>
                             <th className="p-2">Servicio</th>
                             <th className="p-2">Moneda</th>
                             <th className="p-2">N° Comprobante</th>
                             <th className="p-2">Mes de Servicio</th>
                             <th className="p-2">Fecha Factura</th>
-                            <th className="p-2">Pago CTA. CTE</th>
+                            <th className="p-2">F. Abono CTA. CTE</th>
                             <th className="p-2">Abono CTA. CTE</th>
-                            <th className="p-2">Pago CTA. DETRAC</th>
+                            <th className="p-2">F. Abono CTA. DETRAC</th>
                             <th className="p-2">IGV CTA. DETRAC</th>
                             <th className="p-2">Subtotal</th>
                             <th className="p-2">IGV</th>
@@ -755,6 +1014,16 @@ export const Ventas = () => {
                                                 value={ventaEditada.cliente ?? venta.cliente}
                                                 onChange={(e) =>
                                                     setVentaEditada((prev) => ({ ...prev, cliente: e.target.value }))
+                                                }
+                                                className="border p-1 rounded w-full"
+                                            />
+                                        </td>
+                                        <td className="p-2">
+                                            <input
+                                                type="text"
+                                                value={ventaEditada.area ?? venta.area}
+                                                onChange={(e) =>
+                                                    setVentaEditada((prev) => ({ ...prev, area: e.target.value }))
                                                 }
                                                 className="border p-1 rounded w-full"
                                             />
@@ -909,18 +1178,43 @@ export const Ventas = () => {
                                 ) : (
                                     <>
                                         <td className="p-2">{venta.cliente}</td>
+                                        <td className="p-2">{venta.area}</td>
                                         <td className="p-2">{venta.servicio}</td>
                                         <td className="p-2">{venta.moneda}</td>
                                         <td className="p-2">{venta.comprobante}</td>
                                         <td className="p-2">{venta.mesServicio}</td>
                                         <td className="p-2">{venta.fechaFactura}</td>
                                         <td className="p-2">{venta.fechaPagoCtaCte}</td>
-                                        <td className="p-2">{venta.abonoCtaCte.toFixed(2)}</td>
-                                        <td className="p-2">{venta.fechaPagoDeducible.toFixed(2)}</td>
-                                        <td className="p-2">{venta.igvdeducible.toFixed(2)}</td>
-                                        <td className="p-2">{venta.subtotal.toFixed(2)}</td>
-                                        <td className="p-2">{venta.igv.toFixed(2)}</td>
-                                        <td className="p-2 font-semibold">{venta.total.toFixed(2)}</td>                                       
+                                            <td className="p-2">
+                                                {typeof venta.abonoCtaCte === "number"
+                                                    ? venta.abonoCtaCte.toFixed(2)
+                                                    : "-"}
+                                            </td>
+                                            <td className="p-2">
+                                                {typeof venta.fechaPagoDeducible === "number"
+                                                    ? venta.fechaPagoDeducible.toFixed(2)
+                                                    : "-"}
+                                            </td>
+                                            <td className="p-2">
+                                                {typeof venta.igvdeducible === "number"
+                                                    ? venta.igvdeducible.toFixed(2)
+                                                    : "-"}
+                                            </td>
+                                            <td className="p-2">
+                                                {typeof venta.subtotal === "number"
+                                                    ? venta.subtotal.toFixed(2)
+                                                    : "-"}
+                                            </td>
+                                            <td className="p-2">
+                                                {typeof venta.igv === "number"
+                                                    ? venta.igv.toFixed(2)
+                                                    : "-"}
+                                            </td>
+                                            <td className="p-2">
+                                                {typeof venta.total === "number"
+                                                    ? venta.total.toFixed(2)
+                                                    : "-"}
+                                            </td>                                      
                                     </>
                                 )}
                             </tr>
