@@ -34,6 +34,23 @@ interface Venta {
     total: number | "";
 }
 
+interface VentaExcel {
+    Cliente?: string;
+    Area?: string;
+    Servicio?: string;
+    Moneda?: "S/" | "$";
+    "N° Comprobante"?: string;
+    "Mes de Servicio"?: string;
+    "Fecha Factura"?: string;
+    "F. Abono CTA. CTE"?: string;
+    "Abono CTA. CTE"?: string | number;
+    "F. Abono CTA. DETRAC"?: string | number;
+    "IGV CTA. DETRAC"?: string | number;
+    Subtotal?: string | number;
+    IGV?: string | number;
+    Total?: string | number;
+}
+
 export const Ventas = () => {
     const tablaRef = useRef<HTMLTableElement>(null);
     const [ventas, setVentas] = useState<Venta[]>([]);
@@ -172,16 +189,28 @@ export const Ventas = () => {
         const data = await file.arrayBuffer();
         const workbook = XLSX.read(data);
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
+        const jsonData: VentaExcel[] = XLSX.utils.sheet_to_json(worksheet);
+
+        if (jsonData.length === 0) {
+            toast.error("El archivo Excel está vacío o mal formateado.");
+            return;
+        }
 
         const nuevasVentas = jsonData.map((row) => ({
-            ...row,
-            abonoCtaCte: parseFloat(row["Abono CTA. CTE"]) || 0,
-            fechaPagoDeducible: parseFloat(row["F. Abono CTA. DETRAC"]) || 0,
-            igvdeducible: parseFloat(row["IGV CTA. DETRAC"]) || 0,
-            subtotal: parseFloat(row["Subtotal"]) || 0,
-            igv: parseFloat(row["IGV"]) || 0,
-            total: parseFloat(row["Total"]) || 0,
+            cliente: row.Cliente || "",
+            area: row.Area || "",
+            servicio: row.Servicio || "",
+            moneda: row.Moneda === "$" || row.Moneda === "S/" ? row.Moneda : "S/",
+            comprobante: row["N° Comprobante"] || "",
+            mesServicio: row["Mes de Servicio"] || "",
+            fechaFactura: row["Fecha Factura"] || "",
+            fechaPagoCtaCte: row["F. Abono CTA. CTE"] || "",
+            abonoCtaCte: parseFloat(row["Abono CTA. CTE"]?.toString() || "0") || 0,
+            fechaPagoDeducible: parseFloat(row["F. Abono CTA. DETRAC"]?.toString() || "0") || 0,
+            igvdeducible: parseFloat(row["IGV CTA. DETRAC"]?.toString() || "0") || 0,
+            subtotal: parseFloat(row.Subtotal?.toString() || "0") || 0,
+            igv: parseFloat(row.IGV?.toString() || "0") || 0,
+            total: parseFloat(row.Total?.toString() || "0") || 0,
             fechaCreacion: Timestamp.now(),
         }));
 
