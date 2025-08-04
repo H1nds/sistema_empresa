@@ -191,6 +191,13 @@ export const Ventas = () => {
         }
     };
 
+    const convertirExcelDate = (serial: number) => {
+        const fechaBase = new Date(1899, 11, 30);
+        fechaBase.setDate(fechaBase.getDate() + serial);
+        return fechaBase.toISOString().split('T')[0]; // formato YYYY-MM-DD
+    };
+
+
     const handleImportarExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -212,9 +219,9 @@ export const Ventas = () => {
             moneda: row.Moneda === "$" || row.Moneda === "S/" ? row.Moneda : "S/",
             comprobante: row["N° Comprobante"] || "",
             mesServicio: row["Mes de Servicio"] || "",
-            fechaFactura: row["Fecha Factura"] || "",
-            plazoDePago: parseFloat(row["Plazo de pago (dias)"]?.toString() || "0") || 0,
-            fechaPagoCtaCte: row["F. Abono CTA. CTE"] || "",
+            fechaFactura: typeof row["Fecha Factura"] === 'number' ? convertirExcelDate(row["Fecha Factura"]) : row["Fecha Factura"],
+            plazoDePago: parseInt(row["Plazo de Pago (días)"]) || 0,
+            fechaPagoCtaCte: typeof row["F. Abono CTA. CTE"] === 'number' ? convertirExcelDate(row["F. Abono CTA. CTE"]) : row["F. Abono CTA. CTE"],
             abonoCtaCte: parseFloat(row["Abono CTA. CTE"]?.toString() || "0") || 0,
             fechaPagoDeducible: parseFloat(row["F. Abono CTA. DETRAC"]?.toString() || "0") || 0,
             igvdeducible: parseFloat(row["IGV CTA. DETRAC"]?.toString() || "0") || 0,
@@ -1110,7 +1117,7 @@ export const Ventas = () => {
                             </div>
 
                             <div className="w-full overflow-x-auto">
-                                <div className="min-w-[1200px] max-h-[70vh] overflow-y-auto border rounded-lg shadow-inner">
+                                <div className="min-w-[1200px] max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner">
                                     <table
                                         ref={tablaRef}
                                         className="min-w-full table-auto text-sm text-center border-separate border-spacing-0"
