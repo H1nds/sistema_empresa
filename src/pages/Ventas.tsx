@@ -220,7 +220,7 @@ export const Ventas = () => {
             comprobante: row["N° Comprobante"] || "",
             mesServicio: row["Mes de Servicio"] || "",
             fechaFactura: typeof row["Fecha Factura"] === 'number' ? convertirExcelDate(row["Fecha Factura"]) : row["Fecha Factura"],
-            plazoDePago: parseInt(row["Plazo de Pago (días)"]) || 0,
+            plazoDePago: parseFloat(row["Plazo de pago (dias)"]?.toString() || "0") || 0,
             fechaPagoCtaCte: typeof row["F. Abono CTA. CTE"] === 'number' ? convertirExcelDate(row["F. Abono CTA. CTE"]) : row["F. Abono CTA. CTE"],
             abonoCtaCte: parseFloat(row["Abono CTA. CTE"]?.toString() || "0") || 0,
             fechaPagoDeducible: parseFloat(row["F. Abono CTA. DETRAC"]?.toString() || "0") || 0,
