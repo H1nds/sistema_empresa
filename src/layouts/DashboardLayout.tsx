@@ -1,6 +1,5 @@
 import { Outlet, NavLink } from "react-router-dom";
 import { useState } from "react";
-import React from "react";
 
 export const DashboardLayout = () => {
     const [submenuVentas, setSubmenuVentas] = useState(false);

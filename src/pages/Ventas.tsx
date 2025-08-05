@@ -45,7 +45,7 @@ interface VentaExcel {
     "N° Comprobante"?: string;
     "Mes de Servicio"?: string;
     "Fecha Factura"?: string;
-    "Plazo de pago (dias)"?: number | "";
+    "Plazo de Pago (días)"?: string | number;
     "F. Abono CTA. CTE"?: string;
     "Abono CTA. CTE"?: string | number;
     "F. Abono CTA. DETRAC"?: string | number;
@@ -106,14 +106,14 @@ export const Ventas = () => {
             !comprobante ||
             !mesServicio ||
             !fechaFactura ||
-            plazoDePago < 0 ||
+            Number(plazoDePago) < 0 ||
             !fechaPagoCtaCte ||
-            abonoCtaCte < 0 ||
-            fechaPagoDeducible < 0 ||
-            igvdeducible < 0 ||
-            subtotal < 0 ||
-            igv < 0 ||
-            total < 0
+            Number(abonoCtaCte) < 0 ||
+            Number(fechaPagoDeducible) < 0 ||
+            Number(igvdeducible) < 0 ||
+            Number(subtotal) < 0 ||
+            Number(igv) < 0 ||
+            Number(total) < 0
         ) {
             toast.error("Por favor, completa todos los campos correctamente.");
             return;
@@ -220,7 +220,7 @@ export const Ventas = () => {
             comprobante: row["N° Comprobante"] || "",
             mesServicio: row["Mes de Servicio"] || "",
             fechaFactura: typeof row["Fecha Factura"] === 'number' ? convertirExcelDate(row["Fecha Factura"]) : row["Fecha Factura"],
-            plazoDePago: parseFloat(row["Plazo de pago (dias)"]?.toString() || "0") || 0,
+            plazoDePago: parseFloat(row["Plazo de Pago (días)"]?.toString() || "0") || 0,
             fechaPagoCtaCte: typeof row["F. Abono CTA. CTE"] === 'number' ? convertirExcelDate(row["F. Abono CTA. CTE"]) : row["F. Abono CTA. CTE"],
             abonoCtaCte: parseFloat(row["Abono CTA. CTE"]?.toString() || "0") || 0,
             fechaPagoDeducible: parseFloat(row["F. Abono CTA. DETRAC"]?.toString() || "0") || 0,
@@ -286,7 +286,7 @@ export const Ventas = () => {
         });
 
         // Estilo para todas las celdas
-        worksheet.eachRow((row, rowNumber) => {
+        worksheet.eachRow((row) => {
             row.eachCell((cell) => {
                 cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
                 cell.border = {
@@ -343,19 +343,19 @@ export const Ventas = () => {
             comprobante: venta.comprobante || "",
             mesServicio: venta.mesServicio || "",
             fechaFactura: venta.fechaFactura || "",
-            plazoDePago: venta.plazoDePago?.toFixed(2) || "",
+            plazoDePago: typeof venta.plazoDePago === "number" ? venta.plazoDePago.toFixed(2) : "",
             fechaPagoCtaCte: venta.fechaPagoCtaCte || "",
-            abonoCtaCte: venta.abonoCtaCte?.toFixed(2) || "",
-            fechaPagoDeducible: venta.fechaPagoDeducible?.toFixed(2) || "",
-            igvdeducible: venta.igvdeducible?.toFixed(2) || "",
-            subtotal: venta.subtotal?.toFixed(2) || "",
-            igv: venta.igv?.toFixed(2) || "",
-            total: venta.total?.toFixed(2) || "",
+            abonoCtaCte: typeof venta.abonoCtaCte === "number" ? venta.abonoCtaCte.toFixed(2) : "",
+            fechaPagoDeducible: typeof venta.fechaPagoDeducible === "number" ? venta.fechaPagoDeducible.toFixed(2) : "",
+            igvdeducible: typeof venta.igvdeducible === "number" ? venta.igvdeducible.toFixed(2) : "",
+            subtotal: typeof venta.subtotal === "number" ? venta.subtotal.toFixed(2) : "",
+            igv: typeof venta.igv === "number" ? venta.igv.toFixed(2) : "",
+            total: typeof venta.total === "number" ? venta.total.toFixed(2) : "",
         }));
 
         autoTable(doc, {
             head: [columnasExportar.map((col) => col.header)],
-            body: filas.map((row) => columnasExportar.map((col) => row[col.dataKey])),
+            body: filas.map((row) => columnasExportar.map((col) => (row as any)[col.dataKey])),
             startY: 50,
             styles: {
                 fontSize: 8,
@@ -570,7 +570,7 @@ export const Ventas = () => {
                                 <input
                                     type="number"
                                     name="plazoDePago"
-                                    placeholder="Plazo de pago (días)"
+                                    placeholder="Plazo de Pago (días)"
                                     className="border p-2 rounded"
                                     value={nuevaVenta.plazoDePago}
                                     onChange={handleInputChange}
@@ -806,11 +806,11 @@ export const Ventas = () => {
                                         <td className="p-2">
                                             <input
                                                 type="number"
-                                                value={ventaEditada.plazoDePago ?? venta.plazoDePago ?? ""}
+                                                value={ventaEditada.plazoDePago !== undefined ? ventaEditada.plazoDePago : (venta.plazoDePago || "")}
                                                 onChange={(e) =>
                                                     setVentaEditada((prev) => ({
                                                         ...prev,
-                                                        plazoDePago: parseInt(e.target.value) || 0,
+                                                        plazoDePago: e.target.value === "" ? "" : parseInt(e.target.value),
                                                     }))
                                                 }
                                                 className="border p-1 rounded w-full"
@@ -819,7 +819,10 @@ export const Ventas = () => {
                                         </td>
                                         <td className="p-2">
                                             {(() => {
-                                                const estado = calcularEstado(venta.fechaFactura, ventaEditada.plazoDePago);
+                                                const estado = calcularEstado(
+                                                    venta.fechaFactura,
+                                                    typeof ventaEditada.plazoDePago === "number" ? ventaEditada.plazoDePago : Number(ventaEditada.plazoDePago) || 0
+                                                );
                                                 return (
                                                     <>
                                                         <span
@@ -961,10 +964,10 @@ export const Ventas = () => {
                                         <td className="p-2">{venta.comprobante}</td>
                                         <td className="p-2">{venta.mesServicio}</td>
                                         <td className="p-2">{venta.fechaFactura}</td>
-                                        <td className="p-2 text-center">{venta.plazoDePago ?? "-"}</td>
+                                        <td className="p-2">{venta.plazoDePago}</td>
                                         <td className="p-2 text-center">
                                             {(() => {
-                                              const estado = calcularEstado(venta.fechaFactura, venta.plazoDePago);
+                                              const estado = calcularEstado(venta.fechaFactura, Number(venta.plazoDePago)); 
                                               return (
                                                 <>
                                                   <span
@@ -1235,7 +1238,10 @@ export const Ventas = () => {
                                                     </td>
                                                     <td className="p-2">
                                                         {(() => {
-                                                            const estado = calcularEstado(venta.fechaFactura, ventaEditada.plazoDePago);
+                                                            const estado = calcularEstado(
+                                                                venta.fechaFactura,
+                                                                typeof ventaEditada.plazoDePago === "number" ? ventaEditada.plazoDePago : Number(ventaEditada.plazoDePago) || 0
+                                                            );
                                                             return (
                                                                 <>
                                                                     <span
@@ -1359,7 +1365,7 @@ export const Ventas = () => {
                                                     <td className="p-2 text-center">{venta.plazoDePago ?? "-"}</td>
                                                     <td className="p-2 text-center">
                                                         {(() => {
-                                                          const estado = calcularEstado(venta.fechaFactura, venta.plazoDePago);
+                                                          const estado = calcularEstado(venta.fechaFactura, Number(venta.plazoDePago));
                                                           return (
                                                             <>
                                                               <span

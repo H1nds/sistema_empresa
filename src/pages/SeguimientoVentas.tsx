@@ -40,7 +40,7 @@ export const SeguimientoVentas = () => {
 
         return [
             { moneda: "Soles", valor: totalSoles },
-            { moneda: "Dólares", valor: totalDolares },
+            { moneda: "DÃ³lares", valor: totalDolares },
         ];
     };
 
@@ -67,7 +67,7 @@ export const SeguimientoVentas = () => {
 
     const convertirFechaFactura = (fecha: any) => {
         if (typeof fecha === 'number') {
-            // Es un serial de Excel, conviértelo a Date
+            // Es un serial de Excel, conviÃ©rtelo a Date
             const fechaBase = new Date(1899, 11, 30);
             fechaBase.setDate(fechaBase.getDate() + fecha);
             return fechaBase;
@@ -88,7 +88,7 @@ export const SeguimientoVentas = () => {
         <div className="p-6 space-y-6">
             <h1 className="text-2xl font-bold">Seguimiento de Ventas</h1>
 
-            {/* Selectores de Año y Mes */}
+            {/* Selectores de AÃ±o y Mes */}
             <div className="flex gap-4 items-center">
                 <select
                     className="border p-2 rounded"
