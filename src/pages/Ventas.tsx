@@ -30,7 +30,7 @@ interface Venta {
     plazoDePago: number | "";
     fechaPagoCtaCte: string;
     abonoCtaCte: number | "";
-    fechaPagoDeducible: number | "";
+    fechaPagoDeducible: string;
     igvdeducible: number | "";
     subtotal: number | "";
     igv: number | "";
@@ -48,8 +48,8 @@ interface VentaExcel {
     "Plazo de Pago (días)"?: string | number;
     "F. Abono CTA. CTE"?: string;
     "Abono CTA. CTE"?: string | number;
-    "F. Abono CTA. DETRAC"?: string | number;
-    "IGV CTA. DETRAC"?: string | number;
+    "F. Abono CTA. DETRAC"?: string;
+    "Abono CTA. DETRAC"?: string | number;
     Subtotal?: string | number;
     IGV?: string | number;
     Total?: string | number;
@@ -109,7 +109,7 @@ export const Ventas = () => {
             Number(plazoDePago) < 0 ||
             !fechaPagoCtaCte ||
             Number(abonoCtaCte) < 0 ||
-            Number(fechaPagoDeducible) < 0 ||
+            !fechaPagoDeducible ||
             Number(igvdeducible) < 0 ||
             Number(subtotal) < 0 ||
             Number(igv) < 0 ||
@@ -151,7 +151,7 @@ export const Ventas = () => {
                 plazoDePago: 0  ,
                 fechaPagoCtaCte: "",
                 abonoCtaCte: 0,
-                fechaPagoDeducible: 0,
+                fechaPagoDeducible: "",
                 igvdeducible: 0,
                 subtotal: 0,
                 igv: 0,
@@ -174,7 +174,7 @@ export const Ventas = () => {
 
         setNuevaVenta((prev) => ({
             ...prev,
-            [name]: ["plazoDePago", "abonoCtaCte", "fechaPagoDeducible", "igvdeducible", "subtotal", "igv", "total"].includes(name)
+            [name]: ["plazoDePago", "abonoCtaCte", "igvdeducible", "subtotal", "igv", "total"].includes(name)
                 ? value === "" ? "" : parseFloat(value)
                 : value,
         }));
@@ -223,8 +223,8 @@ export const Ventas = () => {
             plazoDePago: parseFloat(row["Plazo de Pago (días)"]?.toString() || "0") || 0,
             fechaPagoCtaCte: typeof row["F. Abono CTA. CTE"] === 'number' ? convertirExcelDate(row["F. Abono CTA. CTE"]) : row["F. Abono CTA. CTE"],
             abonoCtaCte: parseFloat(row["Abono CTA. CTE"]?.toString() || "0") || 0,
-            fechaPagoDeducible: parseFloat(row["F. Abono CTA. DETRAC"]?.toString() || "0") || 0,
-            igvdeducible: parseFloat(row["IGV CTA. DETRAC"]?.toString() || "0") || 0,
+            fechaPagoDeducible: typeof row["F. Abono CTA. DETRAC"] === 'number' ? convertirExcelDate(row["F. Abono CTA. DETRAC"]) : row["F. Abono CTA. DETRAC"],
+            igvdeducible: parseFloat(row["Abono CTA. DETRAC"]?.toString() || "0") || 0,
             subtotal: parseFloat(row.Subtotal?.toString() || "0") || 0,
             igv: parseFloat(row.IGV?.toString() || "0") || 0,
             total: parseFloat(row.Total?.toString() || "0") || 0,
@@ -258,7 +258,7 @@ export const Ventas = () => {
             { header: "F. Abono CTA. CTE", key: "fechaPagoCtaCte" },
             { header: "Abono CTA. CTE", key: "abonoCtaCte" },
             { header: "F. Abono CTA. DETRAC", key: "fechaPagoDeducible" },
-            { header: "IGV CTA. DETRAC", key: "igvdeducible" },
+            { header: "Abono CTA. DETRAC", key: "igvdeducible" },
             { header: "Subtotal", key: "subtotal" },
             { header: "IGV", key: "igv" },
             { header: "Total", key: "total" },
@@ -329,7 +329,7 @@ export const Ventas = () => {
             { header: "Pago CTA. CTE", dataKey: "fechaPagoCtaCte" },
             { header: "Abono CTA. CTE", dataKey: "abonoCtaCte" },
             { header: "Pago CTA. DETRAC", dataKey: "fechaPagoDeducible" },
-            { header: "IGV CTA. DETRAC", dataKey: "igvdeducible" },
+            { header: "Abono CTA. DETRAC", dataKey: "igvdeducible" },
             { header: "Subtotal", dataKey: "subtotal" },
             { header: "IGV", dataKey: "igv" },
             { header: "Total", dataKey: "total" },
@@ -346,7 +346,7 @@ export const Ventas = () => {
             plazoDePago: typeof venta.plazoDePago === "number" ? venta.plazoDePago.toFixed(2) : "",
             fechaPagoCtaCte: venta.fechaPagoCtaCte || "",
             abonoCtaCte: typeof venta.abonoCtaCte === "number" ? venta.abonoCtaCte.toFixed(2) : "",
-            fechaPagoDeducible: typeof venta.fechaPagoDeducible === "number" ? venta.fechaPagoDeducible.toFixed(2) : "",
+            fechaPagoDeducible: venta.fechaPagoDeducible || "",
             igvdeducible: typeof venta.igvdeducible === "number" ? venta.igvdeducible.toFixed(2) : "",
             subtotal: typeof venta.subtotal === "number" ? venta.subtotal.toFixed(2) : "",
             igv: typeof venta.igv === "number" ? venta.igv.toFixed(2) : "",
@@ -405,7 +405,7 @@ export const Ventas = () => {
             plazoDePago == null ||
             !fechaPagoCtaCte ||
             abonoCtaCte == null ||
-            fechaPagoDeducible == null ||
+            !fechaPagoDeducible ||
             igvdeducible == null ||
             subtotal == null ||
             igv == null ||
@@ -462,6 +462,8 @@ export const Ventas = () => {
     }, []);
 
     const calcularEstado = (fechaFactura: string, plazoDePago: number) => {
+        if (plazoDePago === 0) return { color: "bg-green-500", texto: "Pagado" };
+
         const fecha = new Date(fechaFactura);
         const ahora = new Date();
         const fechaLimite = new Date(fecha);
@@ -593,18 +595,16 @@ export const Ventas = () => {
                                     min={0}
                                 />
                                 <input
-                                    type="number"
+                                    type="date"
                                     name="fechaPagoDeducible"
-                                    placeholder="Pago CTA. DETRAC"
                                     className="border p-2 rounded"
                                     value={nuevaVenta.fechaPagoDeducible}
                                     onChange={handleInputChange}
-                                    min={0}
                                 />
                                 <input
                                     type="number"
                                     name="igvdeducible"
-                                    placeholder="IGV CTA. DETRAC"
+                                    placeholder="Abono CTA. DETRAC"
                                     className="border p-2 rounded"
                                     value={nuevaVenta.igvdeducible}
                                     onChange={handleInputChange}
@@ -719,7 +719,7 @@ export const Ventas = () => {
                             <th className="p-2">F. Abono CTA. CTE</th>
                             <th className="p-2">Abono CTA. CTE</th>
                             <th className="p-2">F. Abono CTA. DETRAC</th>
-                            <th className="p-2">IGV CTA. DETRAC</th>
+                            <th className="p-2">Abono CTA. DETRAC</th>
                             <th className="p-2">Subtotal</th>
                             <th className="p-2">IGV</th>
                             <th className="p-2">Total</th>
@@ -865,16 +865,12 @@ export const Ventas = () => {
                                         </td>
                                         <td className="p-2">
                                             <input
-                                                type="number"
+                                                type="date"
                                                 value={ventaEditada.fechaPagoDeducible ?? venta.fechaPagoDeducible}
                                                 onChange={(e) =>
-                                                    setVentaEditada((prev) => ({
-                                                        ...prev,
-                                                        fechaPagoDeducible: parseFloat(e.target.value),
-                                                    }))
+                                                    setVentaEditada((prev) => ({ ...prev, fechaPagoDeducible: e.target.value }))
                                                 }
                                                 className="border p-1 rounded w-full"
-                                                min={0}
                                             />
                                         </td>
                                         <td className="p-2">
@@ -990,11 +986,7 @@ export const Ventas = () => {
                                                     ? venta.abonoCtaCte.toFixed(2)
                                                     : "-"}
                                             </td>
-                                            <td className="p-2">
-                                                {typeof venta.fechaPagoDeducible === "number"
-                                                    ? venta.fechaPagoDeducible.toFixed(2)
-                                                    : "-"}
-                                            </td>
+                                            <td className="p-2">{venta.fechaPagoDeducible}</td>
                                             <td className="p-2">
                                                 {typeof venta.igvdeducible === "number"
                                                     ? venta.igvdeducible.toFixed(2)
@@ -1139,7 +1131,7 @@ export const Ventas = () => {
                                         <th className="p-2">F. Abono CTA. CTE</th>
                                         <th className="p-2">Abono CTA. CTE</th>
                                         <th className="p-2">F. Abono CTA. DETRAC</th>
-                                        <th className="p-2">IGV CTA. DETRAC</th>
+                                        <th className="p-2">IAbono CTA. DETRAC</th>
                                         <th className="p-2">Subtotal</th>
                                         <th className="p-2">IGV</th>
                                         <th className="p-2">Total</th>
@@ -1284,16 +1276,12 @@ export const Ventas = () => {
                                                     </td>
                                                     <td className="p-2">
                                                         <input
-                                                            type="number"
+                                                            type="date"
                                                             value={ventaEditada.fechaPagoDeducible ?? venta.fechaPagoDeducible}
                                                             onChange={(e) =>
-                                                                setVentaEditada((prev) => ({
-                                                                    ...prev,
-                                                                    fechaPagoDeducible: parseFloat(e.target.value),
-                                                                }))
+                                                                setVentaEditada((prev) => ({ ...prev, fechaPagoDeducible: e.target.value }))
                                                             }
                                                             className="border p-1 rounded w-full"
-                                                            min={0}
                                                         />
                                                     </td>
                                                     <td className="p-2">
@@ -1388,11 +1376,7 @@ export const Ventas = () => {
                                                                 ? venta.abonoCtaCte.toFixed(2)
                                                                 : "-"}
                                                         </td>
-                                                        <td className="p-2">
-                                                            {typeof venta.fechaPagoDeducible === "number"
-                                                                ? venta.fechaPagoDeducible.toFixed(2)
-                                                                : "-"}
-                                                        </td>
+                                                        <td className="p-2">{venta.fechaPagoDeducible}</td>
                                                         <td className="p-2">
                                                             {typeof venta.igvdeducible === "number"
                                                                 ? venta.igvdeducible.toFixed(2)

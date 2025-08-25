@@ -65,6 +65,27 @@ export const SeguimientoVentas = () => {
         }));
     };
 
+    const obtenerDatosPorArea = () => {
+        const ventasDelMes = ventas.filter(venta => {
+            const fecha = convertirFechaFactura(venta.fechaFactura);
+            return (
+                fecha.getFullYear() === anioSeleccionado &&
+                fecha.getMonth() + 1 === mesSeleccionado
+            );
+        });
+
+        const ventasPorArea: { [area: string]: number } = {};
+        ventasDelMes.forEach(venta => {
+            const area = venta.area || "Sin área";
+            ventasPorArea[area] = (ventasPorArea[area] || 0) + (venta.total || 0);
+        });
+
+        return Object.keys(ventasPorArea).map(area => ({
+            area,
+            total: ventasPorArea[area],
+        }));
+    };
+
     const convertirFechaFactura = (fecha: any) => {
         if (typeof fecha === 'number') {
             // Es un serial de Excel, conviértelo a Date
@@ -134,21 +155,42 @@ export const SeguimientoVentas = () => {
             </div>
 
             {mesSeleccionado && (
-                <div className="w-full h-80 bg-white rounded-lg shadow p-4">
-                    <h2 className="text-lg font-semibold mb-4">Ventas por Cliente ({["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][mesSeleccionado - 1]})</h2>
-                    <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={obtenerDatosBarras()}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="cliente" />
-                            <YAxis />
-                            <Tooltip />
-                            <Legend />
-                            <Bar dataKey="total" fill="#6366F1" />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
-            )}
+                <>
+                    {/* Gráfico por Cliente */}
+                    <div className="w-full h-80 bg-white rounded-lg shadow p-4">
+                        <h2 className="text-lg font-semibold mb-4">
+                            Ventas por Cliente ({["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][mesSeleccionado - 1]})
+                        </h2>
+                        <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={obtenerDatosBarras()}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="cliente" />
+                                <YAxis />
+                                <Tooltip />
+                                <Legend />
+                                <Bar dataKey="total" fill="#6366F1" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
 
+                    {/* Gráfico por Área */}
+                    <div className="w-full h-80 bg-white rounded-lg shadow p-4 mt-6">
+                        <h2 className="text-lg font-semibold mb-4">
+                            Ventas por Área ({["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][mesSeleccionado - 1]})
+                        </h2>
+                        <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={obtenerDatosPorArea()}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="area" />
+                                <YAxis />
+                                <Tooltip />
+                                <Legend />
+                                <Bar dataKey="total" fill="#F59E0B" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </>
+            )}
         </div>
     );
 };
