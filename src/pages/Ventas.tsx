@@ -962,24 +962,29 @@ export const Ventas = () => {
                                         <td className="p-2">{venta.fechaFactura}</td>
                                         <td className="p-2">{venta.plazoDePago}</td>
                                         <td className="p-2 text-center">
-                                            {(() => {
-                                              const estado = calcularEstado(venta.fechaFactura, Number(venta.plazoDePago)); 
-                                              return (
-                                                <>
-                                                  <span
-                                                      className={`inline-block w-3 h-3 rounded-full animate-pulse ${estado.color}`}
-                                                      data-tooltip-id={`tooltip-${venta.id}`}
-                                                      data-tooltip-content={estado.texto}
-                                                    />
-                                                    <Tooltip
-                                                      id={`tooltip-${venta.id}`}
-                                                      place="top"
-                                                      className="z-50"
-                                                    />
-                                                </>
-                                              );
-                                            })()}
-                                            </td>
+                                          {(() => {
+                                            const estado = calcularEstado(venta.fechaFactura, Number(venta.plazoDePago));
+    
+                                            if (estado.texto === "Pagado") {
+                                              return <span className="font-bold text-blue-600">Pagado</span>;
+                                            }
+
+                                            return (
+                                              <>
+                                                <span
+                                                  className={`inline-block w-3 h-3 rounded-full animate-pulse ${estado.color}`}
+                                                  data-tooltip-id={`tooltip-${venta.id}`}
+                                                  data-tooltip-content={estado.texto}
+                                                />
+                                                <Tooltip
+                                                  id={`tooltip-${venta.id}`}
+                                                  place="top"
+                                                  className="z-50"
+                                                />
+                                              </>
+                                            );
+                                          })()}
+                                        </td>
                                         <td className="p-2">{venta.fechaPagoCtaCte}</td>
                                             <td className="p-2">
                                                 {typeof venta.abonoCtaCte === "number"
@@ -1352,24 +1357,29 @@ export const Ventas = () => {
                                                     <td className="p-2">{venta.fechaFactura}</td>
                                                     <td className="p-2 text-center">{venta.plazoDePago ?? "-"}</td>
                                                     <td className="p-2 text-center">
-                                                        {(() => {
-                                                          const estado = calcularEstado(venta.fechaFactura, Number(venta.plazoDePago));
-                                                          return (
-                                                            <>
-                                                              <span
-                                                                  className={`inline-block w-3 h-3 rounded-full animate-pulse ${estado.color}`}
-                                                                  data-tooltip-id={`tooltip-${venta.id}`}
-                                                                  data-tooltip-content={estado.texto}
-                                                                />
-                                                                <Tooltip
-                                                                  id={`tooltip-${venta.id}`}
-                                                                  place="top"
-                                                                  className="z-50"
-                                                                />
-                                                            </>
-                                                          );
-                                                        })()}
-                                                        </td>
+                                                      {(() => {
+                                                        const estado = calcularEstado(venta.fechaFactura, Number(venta.plazoDePago));
+    
+                                                        if (estado.texto === "Pagado") {
+                                                          return <span className="font-bold text-blue-600">Pagado</span>;
+                                                        }
+
+                                                        return (
+                                                          <>
+                                                            <span
+                                                              className={`inline-block w-3 h-3 rounded-full animate-pulse ${estado.color}`}
+                                                              data-tooltip-id={`tooltip-${venta.id}`}
+                                                              data-tooltip-content={estado.texto}
+                                                            />
+                                                            <Tooltip
+                                                              id={`tooltip-${venta.id}`}
+                                                              place="top"
+                                                              className="z-50"
+                                                            />
+                                                          </>
+                                                        );
+                                                      })()}
+                                                    </td>
                                                     <td className="p-2">{venta.fechaPagoCtaCte}</td>
                                                         <td className="p-2">
                                                             {typeof venta.abonoCtaCte === "number"
