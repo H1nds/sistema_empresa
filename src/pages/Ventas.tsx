@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { db } from "../services/firebase";
 import {
     collection,
@@ -9,6 +9,20 @@ import { deleteDoc, doc, Timestamp } from "firebase/firestore";
 import { updateDoc } from "firebase/firestore";
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from "framer-motion";
+import {
+    DndContext,
+    closestCenter,
+    PointerSensor,
+    useSensor,
+    useSensors
+} from "@dnd-kit/core";
+import {
+    SortableContext,
+    arrayMove,
+    verticalListSortingStrategy,
+    useSortable
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Pencil, Trash2, Save, X, Maximize2, FileDown, FileUp, FilePlus2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -55,9 +69,77 @@ interface VentaExcel {
     Total?: string | number;
 }
 
+interface SortableRowProps {
+    id: string;
+    children: React.ReactNode;
+}
+
+function SortableRow({ id, children }: SortableRowProps) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging
+    } = useSortable({ id });
+
+    const style = {
+        transform: isDragging ? CSS.Transform.toString(transform) : "none",
+        transition,
+        zIndex: isDragging ? 999 : undefined,
+        boxShadow: isDragging ? "0px 4px 12px rgba(0,0,0,0.2)" : "none",
+        cursor: "grab"
+    };
+
+    return (
+        <motion.tr
+            ref={setNodeRef}
+            style={style}
+            {...attributes}
+            {...listeners}
+            initial={false}
+            animate={{ scale: isDragging ? 1.02 : 1 }}
+            transition={{ duration: 0.2 }}
+            layout
+        >
+            {children}
+        </motion.tr>
+    );
+}
+
 export const Ventas = () => {
     const tablaRef = useRef<HTMLTableElement>(null);
     const [ventas, setVentas] = useState<Venta[]>([]);
+    const [order, setOrder] = useState<string[]>([]);
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+    );
+    const [yearFilter, setYearFilter] = useState<string>("All");
+    const [monthFilter, setMonthFilter] = useState<string>("All");
+    const [searchQuery, setSearchQuery] = useState<string>("");
+
+    // Generar años únicos a partir de los datos
+    const years = Array.from(
+        new Set(ventas.map((v) => new Date(v.fechaFactura).getFullYear().toString()))
+    ).sort((a, b) => +b - +a);
+
+    // Opciones de mes
+    const months = [
+        { value: "All", label: "Todos" },
+        { value: "1", label: "Enero" },
+        { value: "2", label: "Febrero" },
+        { value: "3", label: "Marzo" },
+        { value: "4", label: "Abril" },
+        { value: "5", label: "Mayo" },
+        { value: "6", label: "Junio" },
+        { value: "7", label: "Julio" },
+        { value: "8", label: "Agosto" },
+        { value: "9", label: "Setiembre" },
+        { value: "10", label: "Octubre" },
+        { value: "11", label: "Noviembre" },
+        { value: "12", label: "Diciembre" }
+    ];
     const [nuevaVenta, setNuevaVenta] = useState<Venta>({
         id: "",
         cliente: "",
@@ -70,7 +152,7 @@ export const Ventas = () => {
         plazoDePago: "",
         fechaPagoCtaCte: "",
         abonoCtaCte: "",
-        fechaPagoDeducible: "",     
+        fechaPagoDeducible: "",
         igvdeducible: "",
         subtotal: "",
         igv: "",
@@ -136,6 +218,7 @@ export const Ventas = () => {
                 subtotal,
                 igv,
                 total,
+                position: order.length
             });
 
             // Limpiar formulario
@@ -148,7 +231,7 @@ export const Ventas = () => {
                 comprobante: "",
                 mesServicio: "",
                 fechaFactura: "",
-                plazoDePago: 0  ,
+                plazoDePago: 0,
                 fechaPagoCtaCte: "",
                 abonoCtaCte: 0,
                 fechaPagoDeducible: "",
@@ -197,7 +280,6 @@ export const Ventas = () => {
         return fechaBase.toISOString().split('T')[0]; // formato YYYY-MM-DD
     };
 
-
     const handleImportarExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -232,8 +314,9 @@ export const Ventas = () => {
         }));
 
         try {
-            for (const venta of nuevasVentas) {
-                await addDoc(ventasRef, venta);
+            for (const [idx, venta] of nuevasVentas.entries()) {
+                const docRef = await addDoc(ventasRef, venta);
+                await updateDoc(docRef, { position: order.length + idx });
             }
             toast.success("Ventas importadas correctamente.");
         } catch (err) {
@@ -449,13 +532,46 @@ export const Ventas = () => {
     const [ventaAEliminar, setVentaAEliminar] = useState<string | null>(null);
 
     useEffect(() => {
-        const unsubscribe = onSnapshot(ventasRef, (snapshot) => {
-            const data = snapshot.docs.map((doc) => ({
-                id: doc.id,
-                ...doc.data(),
-            })) as Venta[];
+        const initializedRef = { current: false };
 
-            setVentas(data);
+        const unsubscribe = onSnapshot(ventasRef, async (snapshot) => {
+            // 1) Lee todos los docs y extrae data + position
+            const docsWithPos = snapshot.docs.map((snap) => {
+                const data = snap.data() as any;
+                return {
+                    id: snap.id,
+                    // si no hay position, asigno un valor muy grande para que queden al final
+                    position: typeof data.position === "number" ? data.position : Number.MAX_SAFE_INTEGER,
+                    ...data,
+                } as Venta & { position: number };
+            });
+
+            // 2) Si es la primera vez, intenta inicializar positions (si hay docs sin position)
+            if (!initializedRef.current) {
+                const missing = docsWithPos.filter(v => v.position === Number.MAX_SAFE_INTEGER);
+                if (missing.length > 0) {
+                    // intento seguro: hago updates y capturo fallos individuales para no romper todo
+                    await Promise.all(
+                        missing.map((v, idx) => {
+                            const ref = doc(db, "ventas", v.id);
+                            // uso catch en cada update para que no rechace Promise.all
+                            return updateDoc(ref, { position: idx }).catch((err) => {
+                                console.warn(`No pude inicializar position para ${v.id}`, err);
+                                // no rethrow
+                            });
+                        })
+                    );
+                }
+                // marcamos como inicializado (aunque hayan fallado algunos updates,
+                // ya no seguiremos intentando cada snapshot)
+                initializedRef.current = true;
+                // continuamos para ordenar y setear estado local (no retornamos)
+            }
+
+            // 3) Ordena por position y actualiza estado
+            docsWithPos.sort((a, b) => a.position - b.position);
+            setVentas(docsWithPos);
+            setOrder(docsWithPos.map((v) => v.id));
         });
 
         return () => unsubscribe();
@@ -477,6 +593,68 @@ export const Ventas = () => {
         if (porcentajeRestante < 0.5) return { color: "bg-yellow-500", texto: "Por vencer pronto" };
         return { color: "bg-green-500", texto: "Dentro del plazo" };
     };
+
+    const handleDragEnd = async ({ active, over }: DragEndEvent) => {
+        if (!over || active.id === over.id) {
+            console.log("🚫 drop inválido o mismo elemento, nada que hacer");
+            return;
+        }
+
+        // 1) UI: reordena localmente
+        const oldIndex = order.indexOf(active.id);
+        const newIndex = order.indexOf(over.id);
+        const newOrder = arrayMove(order, oldIndex, newIndex);
+        setOrder(newOrder);
+
+        // 2) BD: persiste en Firestore
+        console.log("📝 Persistiendo nuevo orden:", newOrder);
+        try {
+            await Promise.all(
+                newOrder.map((id, idx) => {
+                    console.log(`→ updateDoc(ventas/${id}) { position: ${idx} }`);
+                    return updateDoc(doc(db, "ventas", id), { position: idx });
+                })
+            );
+            console.log("✅ Firestore actualizado");
+            toast.success("Orden guardado en la BD");
+        } catch (error) {
+            console.error("❌ Error guardando orden en Firestore:", error);
+            toast.error("Error guardando orden");
+        }
+    };
+
+    const filteredVentas = useMemo(() => {
+        return order
+            .map((id) => ventas.find((v) => v.id === id)!)
+            .filter((v) => {
+                const fecha = new Date(v.fechaFactura);
+                // Filtrar por año
+                if (yearFilter !== "All" && fecha.getFullYear().toString() !== yearFilter)
+                    return false;
+                // Filtrar por mes
+                if (
+                    monthFilter !== "All" &&
+                    (fecha.getMonth() + 1).toString() !== monthFilter
+                )
+                    return false;
+                // Filtrar por texto
+                if (searchQuery) {
+                    const term = searchQuery.toLowerCase();
+                    return (
+                        v.cliente.toLowerCase().includes(term) ||
+                        v.area.toLowerCase().includes(term) ||
+                        v.servicio.toLowerCase().includes(term) ||
+                        v.comprobante.toLowerCase().includes(term)
+                    );
+                }
+                return true;
+            });
+    }, [ventas, order, yearFilter, monthFilter, searchQuery]);
+
+    const filteredOrder = useMemo(
+        () => order.filter((id) => filteredVentas.some((v) => v.id === id)),
+        [order, filteredVentas]
+    );
 
     return (
         <div className="space-y-8">
@@ -512,137 +690,137 @@ export const Ventas = () => {
                             className="overflow-hidden mt-4"
                         >
                             <div className="bg-white shadow-xl rounded-2xl p-6 border border-gray-200">
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                <input
-                                    type="text"
-                                    name="cliente"
-                                    placeholder="Cliente"
-                                    className="border p-2 rounded"
-                                    value={nuevaVenta.cliente}
-                                    onChange={handleInputChange}
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    <input
+                                        type="text"
+                                        name="cliente"
+                                        placeholder="Cliente"
+                                        className="border p-2 rounded"
+                                        value={nuevaVenta.cliente}
+                                        onChange={handleInputChange}
                                     />
-                                <input
-                                    type="text"
-                                    name="area"
-                                    placeholder="Area"
-                                    className="border p-2 rounded"
-                                    value={nuevaVenta.area}
-                                    onChange={handleInputChange}
+                                    <input
+                                        type="text"
+                                        name="area"
+                                        placeholder="Area"
+                                        className="border p-2 rounded"
+                                        value={nuevaVenta.area}
+                                        onChange={handleInputChange}
                                     />
-                                <input
-                                    type="text"
-                                    name="servicio"
-                                    placeholder="Servicio del proyecto"
-                                    className="border p-2 rounded"
-                                    value={nuevaVenta.servicio}
-                                    onChange={handleInputChange}
-                                />
-                                <select
-                                    name="moneda"
-                                    className="border p-2 rounded"
-                                    value={nuevaVenta.moneda}
-                                    onChange={handleInputChange}
-                                >
-                                    <option value="S/">S/ (Soles)</option>
-                                    <option value="$">$ (Dólares)</option>
-                                </select>
-                                <input
-                                    type="text"
-                                    name="comprobante"
-                                    placeholder="N° comprobante"
-                                    className="border p-2 rounded"
-                                    value={nuevaVenta.comprobante}
-                                    onChange={handleInputChange}
-                                />
-                                <input
-                                    type="text"
-                                    name="mesServicio"
-                                    placeholder="Mes de servicio"
-                                    className="border p-2 rounded"
-                                    value={nuevaVenta.mesServicio}
-                                    onChange={handleInputChange}
-                                />
-                                <input
-                                    type="date"
-                                    name="fechaFactura"
-                                    className="border p-2 rounded"
-                                    value={nuevaVenta.fechaFactura}
-                                    onChange={handleInputChange}
-                                />
-                                <input
-                                    type="number"
-                                    name="plazoDePago"
-                                    placeholder="Plazo de Pago (días)"
-                                    className="border p-2 rounded"
-                                    value={nuevaVenta.plazoDePago}
-                                    onChange={handleInputChange}
-                                    min={0}
-                                />
-                                <input
-                                    type="date"
-                                    name="fechaPagoCtaCte"
-                                    className="border p-2 rounded"
-                                    value={nuevaVenta.fechaPagoCtaCte}
-                                    onChange={handleInputChange}
-                                />
-                                <input
-                                    type="number"
-                                    name="abonoCtaCte"
-                                    placeholder="Abono CTA. CTE"
-                                    className="border p-2 rounded"
-                                    value={nuevaVenta.abonoCtaCte}
-                                    onChange={handleInputChange}
-                                    min={0}
-                                />
-                                <input
-                                    type="date"
-                                    name="fechaPagoDeducible"
-                                    className="border p-2 rounded"
-                                    value={nuevaVenta.fechaPagoDeducible}
-                                    onChange={handleInputChange}
-                                />
-                                <input
-                                    type="number"
-                                    name="igvdeducible"
-                                    placeholder="Abono CTA. DETRAC"
-                                    className="border p-2 rounded"
-                                    value={nuevaVenta.igvdeducible}
-                                    onChange={handleInputChange}
-                                    min={0}
-                                />
-                                <input
-                                    type="number"
-                                    name="subtotal"
-                                    placeholder="Subtotal"
-                                    className="border p-2 rounded"
-                                    value={nuevaVenta.subtotal}
-                                    onChange={handleInputChange}
-                                    min={0}
-                                />
-                                <input
-                                    type="number"
-                                    name="igv"
-                                    placeholder="IGV"
-                                    className="border p-2 rounded"
-                                    value={nuevaVenta.igv}
-                                    onChange={handleInputChange}
-                                    min={0}
-                                />
-                                <input
-                                    type="number"
-                                    name="total"
-                                    placeholder="Total"
-                                    className="border p-2 rounded"
-                                    value={nuevaVenta.total}
-                                    onChange={handleInputChange}
-                                    min={0}
-                                />
-                                <button
-                                    onClick={agregarVenta}
-                                    className="bg-blue-500 text-white rounded px-4 py-2 hover:bg-blue-600 col-span-full"
-                                >
-                                    Agregar
-                                </button>
+                                    <input
+                                        type="text"
+                                        name="servicio"
+                                        placeholder="Servicio del proyecto"
+                                        className="border p-2 rounded"
+                                        value={nuevaVenta.servicio}
+                                        onChange={handleInputChange}
+                                    />
+                                    <select
+                                        name="moneda"
+                                        className="border p-2 rounded"
+                                        value={nuevaVenta.moneda}
+                                        onChange={handleInputChange}
+                                    >
+                                        <option value="S/">S/ (Soles)</option>
+                                        <option value="$">$ (Dólares)</option>
+                                    </select>
+                                    <input
+                                        type="text"
+                                        name="comprobante"
+                                        placeholder="N° comprobante"
+                                        className="border p-2 rounded"
+                                        value={nuevaVenta.comprobante}
+                                        onChange={handleInputChange}
+                                    />
+                                    <input
+                                        type="text"
+                                        name="mesServicio"
+                                        placeholder="Mes de servicio"
+                                        className="border p-2 rounded"
+                                        value={nuevaVenta.mesServicio}
+                                        onChange={handleInputChange}
+                                    />
+                                    <input
+                                        type="date"
+                                        name="fechaFactura"
+                                        className="border p-2 rounded"
+                                        value={nuevaVenta.fechaFactura}
+                                        onChange={handleInputChange}
+                                    />
+                                    <input
+                                        type="number"
+                                        name="plazoDePago"
+                                        placeholder="Plazo de Pago (días)"
+                                        className="border p-2 rounded"
+                                        value={nuevaVenta.plazoDePago}
+                                        onChange={handleInputChange}
+                                        min={0}
+                                    />
+                                    <input
+                                        type="date"
+                                        name="fechaPagoCtaCte"
+                                        className="border p-2 rounded"
+                                        value={nuevaVenta.fechaPagoCtaCte}
+                                        onChange={handleInputChange}
+                                    />
+                                    <input
+                                        type="number"
+                                        name="abonoCtaCte"
+                                        placeholder="Abono CTA. CTE"
+                                        className="border p-2 rounded"
+                                        value={nuevaVenta.abonoCtaCte}
+                                        onChange={handleInputChange}
+                                        min={0}
+                                    />
+                                    <input
+                                        type="date"
+                                        name="fechaPagoDeducible"
+                                        className="border p-2 rounded"
+                                        value={nuevaVenta.fechaPagoDeducible}
+                                        onChange={handleInputChange}
+                                    />
+                                    <input
+                                        type="number"
+                                        name="igvdeducible"
+                                        placeholder="Abono CTA. DETRAC"
+                                        className="border p-2 rounded"
+                                        value={nuevaVenta.igvdeducible}
+                                        onChange={handleInputChange}
+                                        min={0}
+                                    />
+                                    <input
+                                        type="number"
+                                        name="subtotal"
+                                        placeholder="Subtotal"
+                                        className="border p-2 rounded"
+                                        value={nuevaVenta.subtotal}
+                                        onChange={handleInputChange}
+                                        min={0}
+                                    />
+                                    <input
+                                        type="number"
+                                        name="igv"
+                                        placeholder="IGV"
+                                        className="border p-2 rounded"
+                                        value={nuevaVenta.igv}
+                                        onChange={handleInputChange}
+                                        min={0}
+                                    />
+                                    <input
+                                        type="number"
+                                        name="total"
+                                        placeholder="Total"
+                                        className="border p-2 rounded"
+                                        value={nuevaVenta.total}
+                                        onChange={handleInputChange}
+                                        min={0}
+                                    />
+                                    <button
+                                        onClick={agregarVenta}
+                                        className="bg-blue-500 text-white rounded px-4 py-2 hover:bg-blue-600 col-span-full"
+                                    >
+                                        Agregar
+                                    </button>
                                 </div>
                             </div>
                         </motion.div>
@@ -650,7 +828,7 @@ export const Ventas = () => {
                 </AnimatePresence>
             </div>
 
-               <div>
+            <div>
                 <h3 className="text-xl font-semibold mb-2">Ventas registradas</h3>
                 <div className="flex gap-4 mb-4 items-center">
                     {/* Importar Excel */}
@@ -688,367 +866,422 @@ export const Ventas = () => {
                         <FileUp className="w-5 h-5" />
                     </motion.button>
                 </div>
-                <div className="mt-4 text-right">
-                    <motion.button
-                        onClick={() => setMostrarTablaExpandida(true)}
-                        title="Expandir tabla"
-                        whileHover={{ scale: 1.2 }}
-                        whileTap={{ scale: 0.95 }}
-                        className="text-gray-600 hover:text-black p-2"
+                {/* —————— FILTROS —————— */}
+                <div className="w-full">
+                    <motion.div
+                        className="w-full flex flex-row flex-wrap justify-start items-center gap-4 mb-6"
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3 }}
                     >
-                        <Maximize2 className="w-6 h-6" />
-                    </motion.button>
-                </div>
-                <div className="w-full overflow-x-auto">
-                    <div className="min-w-[1200px] max-h-[60vh] overflow-y-auto">
-                        <table
-                            ref={tablaRef}
-                            className="min-w-full table-auto text-sm text-center border-separate border-spacing-0"
+                        {/* 1) Buscador */}
+                        <input
+                            type="text"
+                            placeholder="Buscar palabra clave..."
+                            className="border rounded p-2 flex-grow min-w-[200px]"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+
+                        {/* 2) Selección de año */}
+                        <select
+                            className="border rounded p-2 min-w-[140px]"
+                            value={yearFilter}
+                            onChange={(e) => setYearFilter(e.target.value)}
                         >
-                            <thead className="sticky top-0 z-10 bg-white shadow-sm">
-                            <tr className="bg-gray-200 border-b border-gray-300 text-gray-700 text-sm uppercase">
-                            <th className="p-2">Cliente</th>
-                            <th className="p-2">Area</th>
-                            <th className="p-2">Servicio</th>
-                            <th className="p-2">Moneda</th>
-                            <th className="p-2">N° Comprobante</th>
-                            <th className="p-2">Mes de Servicio</th>
-                            <th className="p-2">Fecha Factura</th>
-                            <th className="p-2 text-center">Plazo de Pago (días)</th>
-                            <th className="p-2 text-center">Estado</th>
-                            <th className="p-2">F. Abono CTA. CTE</th>
-                            <th className="p-2">Abono CTA. CTE</th>
-                            <th className="p-2">F. Abono CTA. DETRAC</th>
-                            <th className="p-2">Abono CTA. DETRAC</th>
-                            <th className="p-2">Subtotal</th>
-                            <th className="p-2">IGV</th>
-                            <th className="p-2">Total</th>
-                            <th className="p-2">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {ventas.map((venta) => (
-                            <tr key={venta.id} className="border-t">
-                                {ventaEditando === venta.id ? (
-                                    <>
-                                        <td className="p-2">
-                                            <input
-                                                type="text"
-                                                value={ventaEditada.cliente ?? venta.cliente}
-                                                onChange={(e) =>
-                                                    setVentaEditada((prev) => ({ ...prev, cliente: e.target.value }))
-                                                }
-                                                className="border p-1 rounded w-full"
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <input
-                                                type="text"
-                                                value={ventaEditada.area ?? venta.area}
-                                                onChange={(e) =>
-                                                    setVentaEditada((prev) => ({ ...prev, area: e.target.value }))
-                                                }
-                                                className="border p-1 rounded w-full"
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <input
-                                                type="text"
-                                                value={ventaEditada.servicio ?? venta.servicio}
-                                                onChange={(e) =>
-                                                    setVentaEditada((prev) => ({ ...prev, servicio: e.target.value }))
-                                                }
-                                                className="border p-1 rounded w-full"
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <select
-                                                value={ventaEditada.moneda ?? venta.moneda}
-                                                onChange={(e) =>
-                                                    setVentaEditada((prev) => ({ ...prev, moneda: e.target.value as "S/" | "$" }))
-                                                }
-                                                className="border p-1 rounded w-full"
-                                            >
-                                                <option value="S/">S/</option>
-                                                <option value="$">$</option>
-                                            </select>
-                                        </td>
-                                        <td className="p-2">
-                                            <input
-                                                type="text"
-                                                value={ventaEditada.comprobante ?? venta.comprobante}
-                                                onChange={(e) =>
-                                                    setVentaEditada((prev) => ({ ...prev, comprobante: e.target.value }))
-                                                }
-                                                className="border p-1 rounded w-full"
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <input
-                                                type="text"
-                                                value={ventaEditada.mesServicio ?? venta.mesServicio}
-                                                onChange={(e) =>
-                                                    setVentaEditada((prev) => ({ ...prev, mesServicio: e.target.value }))
-                                                }
-                                                className="border p-1 rounded w-full"
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <input
-                                                type="date"
-                                                value={ventaEditada.fechaFactura ?? venta.fechaFactura}
-                                                onChange={(e) =>
-                                                    setVentaEditada((prev) => ({ ...prev, fechaFactura: e.target.value }))
-                                                }
-                                                className="border p-1 rounded w-full"
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <input
-                                                type="number"
-                                                value={ventaEditada.plazoDePago !== undefined ? ventaEditada.plazoDePago : (venta.plazoDePago || "")}
-                                                onChange={(e) =>
-                                                    setVentaEditada((prev) => ({
-                                                        ...prev,
-                                                        plazoDePago: e.target.value === "" ? "" : parseInt(e.target.value),
-                                                    }))
-                                                }
-                                                className="border p-1 rounded w-full"
-                                                min={0}
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            {(() => {
-                                                const estado = calcularEstado(
-                                                    venta.fechaFactura,
-                                                    typeof ventaEditada.plazoDePago === "number" ? ventaEditada.plazoDePago : Number(ventaEditada.plazoDePago) || 0
-                                                );
-                                                return (
-                                                    <>
-                                                        <span
-                                                            className={`inline-block w-3 h-3 rounded-full animate-pulse ${estado.color}`}
-                                                            data-tooltip-id={`tooltip-${venta.id}`}
-                                                            data-tooltip-content={estado.texto}
-                                                        />
-                                                        <Tooltip
-                                                            id={`tooltip-${venta.id}`}
-                                                            place="top"
-                                                            className="z-50"
-                                                        />
-                                                    </>
-                                                );
-                                            })()}
-                                        </td>
-                                        <td className="p-2">
-                                            <input
-                                                type="date"
-                                                value={ventaEditada.fechaPagoCtaCte ?? venta.fechaPagoCtaCte}
-                                                onChange={(e) =>
-                                                    setVentaEditada((prev) => ({ ...prev, fechaPagoCtaCte: e.target.value }))
-                                                }
-                                                className="border p-1 rounded w-full"
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <input
-                                                type="number"
-                                                value={ventaEditada.abonoCtaCte ?? venta.abonoCtaCte}
-                                                onChange={(e) =>
-                                                    setVentaEditada((prev) => ({
-                                                        ...prev,
-                                                        abonoCtaCte: parseFloat(e.target.value),
-                                                    }))
-                                                }
-                                                className="border p-1 rounded w-full"
-                                                min={0}
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <input
-                                                type="date"
-                                                value={ventaEditada.fechaPagoDeducible ?? venta.fechaPagoDeducible}
-                                                onChange={(e) =>
-                                                    setVentaEditada((prev) => ({ ...prev, fechaPagoDeducible: e.target.value }))
-                                                }
-                                                className="border p-1 rounded w-full"
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <input
-                                                type="number"
-                                                value={ventaEditada.igvdeducible ?? venta.igvdeducible}
-                                                onChange={(e) =>
-                                                    setVentaEditada((prev) => ({
-                                                        ...prev,
-                                                        igvdeducible: parseFloat(e.target.value),
-                                                    }))
-                                                }
-                                                className="border p-1 rounded w-full"
-                                                min={0}
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <input
-                                                type="number"
-                                                value={ventaEditada.subtotal ?? venta.subtotal}
-                                                onChange={(e) =>
-                                                    setVentaEditada((prev) => ({
-                                                        ...prev,
-                                                        subtotal: parseFloat(e.target.value),
-                                                    }))
-                                                }
-                                                className="border p-1 rounded w-full"
-                                                min={0}
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <input
-                                                type="number"
-                                                value={ventaEditada.igv ?? venta.igv}
-                                                onChange={(e) =>
-                                                    setVentaEditada((prev) => ({
-                                                        ...prev,
-                                                        igv: parseFloat(e.target.value),
-                                                    }))
-                                                }
-                                                className="border p-1 rounded w-full"
-                                                min={0}
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <input
-                                                type="number"
-                                                value={ventaEditada.total ?? venta.total}
-                                                onChange={(e) =>
-                                                    setVentaEditada((prev) => ({
-                                                        ...prev,
-                                                        total: parseFloat(e.target.value),
-                                                    }))
-                                                }
-                                                className="border p-1 rounded w-full"
-                                                min={0}
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <div className="flex flex-col items-center gap-1">
-                                                <button
-                                                    onClick={() => guardarEdicion(venta.id)}
-                                                    title="Guardar"
-                                                    className="text-green-600 hover:text-green-700"
-                                                >
-                                                    <Save size={18} />
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        setVentaEditando(null);
-                                                        setVentaEditada({});
-                                                    }}
-                                                    title="Cancelar"
-                                                    className="text-gray-600 hover:text-gray-700"
-                                                >
-                                                    <X size={18} />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </>
-                                ) : (
-                                    <>
-                                        <td className="p-2">{venta.cliente}</td>
-                                        <td className="p-2">{venta.area}</td>
-                                        <td className="p-2">{venta.servicio}</td>
-                                        <td className="p-2">{venta.moneda}</td>
-                                        <td className="p-2">{venta.comprobante}</td>
-                                        <td className="p-2">{venta.mesServicio}</td>
-                                        <td className="p-2">{venta.fechaFactura}</td>
-                                        <td className="p-2">{venta.plazoDePago}</td>
-                                        <td className="p-2 text-center">
-                                          {(() => {
-                                            const estado = calcularEstado(venta.fechaFactura, Number(venta.plazoDePago));
-    
-                                            if (estado.texto === "Pagado") {
-                                              return <span className="font-bold text-blue-600">Pagado</span>;
-                                            }
+                            <option value="All">Todos los años</option>
+                            {years.map((y) => (
+                                <option key={y} value={y}>{y}</option>
+                            ))}
+                        </select>
 
-                                            return (
-                                              <>
-                                                <span
-                                                  className={`inline-block w-3 h-3 rounded-full animate-pulse ${estado.color}`}
-                                                  data-tooltip-id={`tooltip-${venta.id}`}
-                                                  data-tooltip-content={estado.texto}
-                                                />
-                                                <Tooltip
-                                                  id={`tooltip-${venta.id}`}
-                                                  place="top"
-                                                  className="z-50"
-                                                />
-                                              </>
-                                            );
-                                          })()}
-                                        </td>
-                                        <td className="p-2">{venta.fechaPagoCtaCte}</td>
-                                            <td className="p-2">
-                                                {typeof venta.abonoCtaCte === "number"
-                                                    ? venta.abonoCtaCte.toFixed(2)
-                                                    : "-"}
-                                            </td>
-                                            <td className="p-2">{venta.fechaPagoDeducible}</td>
-                                            <td className="p-2">
-                                                {typeof venta.igvdeducible === "number"
-                                                    ? venta.igvdeducible.toFixed(2)
-                                                    : "-"}
-                                            </td>
-                                            <td className="p-2">
-                                                {typeof venta.subtotal === "number"
-                                                    ? venta.subtotal.toFixed(2)
-                                                    : "-"}
-                                            </td>
-                                            <td className="p-2">
-                                                {typeof venta.igv === "number"
-                                                    ? venta.igv.toFixed(2)
-                                                    : "-"}
-                                            </td>
-                                            <td className="p-2">
-                                                {typeof venta.total === "number"
-                                                    ? venta.total.toFixed(2)
-                                                    : "-"}
-                                            </td>
-                                            <td className="p-2">
-                                                <div className="flex flex-col items-center gap-1">
-                                                    <button
-                                                        onClick={() => {
-                                                            setVentaEditando(venta.id);
-                                                            setVentaEditada({ ...venta });
-                                                        }}
-                                                        title="Editar"
-                                                        className="text-yellow-600 hover:text-yellow-700"
-                                                    >
-                                                        <Pencil size={18} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setVentaAEliminar(venta.id)}
-                                                        title="Eliminar"
-                                                        className="text-red-600 hover:text-red-700"
-                                                    >
-                                                        <Trash2 size={18} />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                    </>
-                                )}
-                            </tr>
-                        ))}
+                        {/* 3) Selección de mes */}
+                        <select
+                            className="border rounded p-2 min-w-[100px]"
+                            value={monthFilter}
+                            onChange={(e) => setMonthFilter(e.target.value)}
+                        >
+                            <option value="All">Todos los meses</option>
+                            {months
+                                .filter((m) => m.value !== "All")
+                                .map((m) => (
+                                    <option key={m.value} value={m.value}>{m.label}</option>
+                                ))}
+                        </select>
 
-                        {ventas.length === 0 && (
-                            <tr>
-                                <td colSpan={12} className="p-4 text-center text-gray-500">
-                                    Aún no hay ventas registradas
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                        </table>
-                    </div>
+                        <motion.button
+                            onClick={() => setMostrarTablaExpandida(true)}
+                            title="Expandir tabla"
+                            whileHover={{ scale: 1.2 }}
+                            whileTap={{ scale: 0.95 }}
+                            className="text-gray-600 hover:text-black p-2"
+                        >
+                            <Maximize2 className="w-6 h-6" />
+                        </motion.button>
+
+                    </motion.div>
                 </div>
+
+                <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                >
+                    <SortableContext items={filteredOrder} strategy={verticalListSortingStrategy}>
+                        <div className="w-full overflow-x-auto">
+                            <div className="min-w-[1200px] max-h-[60vh] overflow-y-auto">
+                                <table
+                                    ref={tablaRef}
+                                    className="min-w-full table-auto text-sm text-center border-separate border-spacing-0"
+                                >
+                                    <thead className="sticky top-0 z-10 bg-white shadow-sm">
+                                        <tr className="bg-gray-200 border-b border-gray-300 text-gray-700 text-sm uppercase">
+                                            <th className="p-2">Cliente</th>
+                                            <th className="p-2">Area</th>
+                                            <th className="p-2">Servicio</th>
+                                            <th className="p-2">Moneda</th>
+                                            <th className="p-2">N° Comprobante</th>
+                                            <th className="p-2">Mes de Servicio</th>
+                                            <th className="p-2">Fecha Factura</th>
+                                            <th className="p-2 text-center">Plazo de Pago (días)</th>
+                                            <th className="p-2 text-center">Estado</th>
+                                            <th className="p-2">F. Abono CTA. CTE</th>
+                                            <th className="p-2">Abono CTA. CTE</th>
+                                            <th className="p-2">F. Abono CTA. DETRAC</th>
+                                            <th className="p-2">Abono CTA. DETRAC</th>
+                                            <th className="p-2">Subtotal</th>
+                                            <th className="p-2">IGV</th>
+                                            <th className="p-2">Total</th>
+                                            <th className="p-2">Acciones</th>
+                                        </tr>
+                                    </thead>
+
+                                    <tbody>
+                                        {filteredOrder
+                                            .map((id) => ventas.find((v) => v.id === id)!)
+                                            .map((venta) => (
+                                                <SortableRow key={venta.id} id={venta.id}>
+                                                    {ventaEditando === venta.id ? (
+                                                        <>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={ventaEditada.cliente ?? venta.cliente}
+                                                                    onChange={(e) =>
+                                                                        setVentaEditada((prev) => ({ ...prev, cliente: e.target.value }))
+                                                                    }
+                                                                    className="border p-1 rounded w-full"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={ventaEditada.area ?? venta.area}
+                                                                    onChange={(e) =>
+                                                                        setVentaEditada((prev) => ({ ...prev, area: e.target.value }))
+                                                                    }
+                                                                    className="border p-1 rounded w-full"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={ventaEditada.servicio ?? venta.servicio}
+                                                                    onChange={(e) =>
+                                                                        setVentaEditada((prev) => ({ ...prev, servicio: e.target.value }))
+                                                                    }
+                                                                    className="border p-1 rounded w-full"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <select
+                                                                    value={ventaEditada.moneda ?? venta.moneda}
+                                                                    onChange={(e) =>
+                                                                        setVentaEditada((prev) => ({ ...prev, moneda: e.target.value as "S/" | "$" }))
+                                                                    }
+                                                                    className="border p-1 rounded w-full"
+                                                                >
+                                                                    <option value="S/">S/</option>
+                                                                    <option value="$">$</option>
+                                                                </select>
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={ventaEditada.comprobante ?? venta.comprobante}
+                                                                    onChange={(e) =>
+                                                                        setVentaEditada((prev) => ({ ...prev, comprobante: e.target.value }))
+                                                                    }
+                                                                    className="border p-1 rounded w-full"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={ventaEditada.mesServicio ?? venta.mesServicio}
+                                                                    onChange={(e) =>
+                                                                        setVentaEditada((prev) => ({ ...prev, mesServicio: e.target.value }))
+                                                                    }
+                                                                    className="border p-1 rounded w-full"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="date"
+                                                                    value={ventaEditada.fechaFactura ?? venta.fechaFactura}
+                                                                    onChange={(e) =>
+                                                                        setVentaEditada((prev) => ({ ...prev, fechaFactura: e.target.value }))
+                                                                    }
+                                                                    className="border p-1 rounded w-full"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    value={ventaEditada.plazoDePago !== undefined ? ventaEditada.plazoDePago : (venta.plazoDePago || "")}
+                                                                    onChange={(e) =>
+                                                                        setVentaEditada((prev) => ({
+                                                                            ...prev,
+                                                                            plazoDePago: e.target.value === "" ? "" : parseInt(e.target.value),
+                                                                        }))
+                                                                    }
+                                                                    className="border p-1 rounded w-full"
+                                                                    min={0}
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                {(() => {
+                                                                    const estado = calcularEstado(
+                                                                        venta.fechaFactura,
+                                                                        typeof ventaEditada.plazoDePago === "number" ? ventaEditada.plazoDePago : Number(ventaEditada.plazoDePago) || 0
+                                                                    );
+                                                                    return (
+                                                                        <>
+                                                                            <span
+                                                                                className={`inline-block w-3 h-3 rounded-full animate-pulse ${estado.color}`}
+                                                                                data-tooltip-id={`tooltip-${venta.id}`}
+                                                                                data-tooltip-content={estado.texto}
+                                                                            />
+                                                                            <Tooltip
+                                                                                id={`tooltip-${venta.id}`}
+                                                                                place="top"
+                                                                                className="z-50"
+                                                                            />
+                                                                        </>
+                                                                    );
+                                                                })()}
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="date"
+                                                                    value={ventaEditada.fechaPagoCtaCte ?? venta.fechaPagoCtaCte}
+                                                                    onChange={(e) =>
+                                                                        setVentaEditada((prev) => ({ ...prev, fechaPagoCtaCte: e.target.value }))
+                                                                    }
+                                                                    className="border p-1 rounded w-full"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    value={ventaEditada.abonoCtaCte ?? venta.abonoCtaCte}
+                                                                    onChange={(e) =>
+                                                                        setVentaEditada((prev) => ({
+                                                                            ...prev,
+                                                                            abonoCtaCte: parseFloat(e.target.value),
+                                                                        }))
+                                                                    }
+                                                                    className="border p-1 rounded w-full"
+                                                                    min={0}
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="date"
+                                                                    value={ventaEditada.fechaPagoDeducible ?? venta.fechaPagoDeducible}
+                                                                    onChange={(e) =>
+                                                                        setVentaEditada((prev) => ({ ...prev, fechaPagoDeducible: e.target.value }))
+                                                                    }
+                                                                    className="border p-1 rounded w-full"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    value={ventaEditada.igvdeducible ?? venta.igvdeducible}
+                                                                    onChange={(e) =>
+                                                                        setVentaEditada((prev) => ({
+                                                                            ...prev,
+                                                                            igvdeducible: parseFloat(e.target.value),
+                                                                        }))
+                                                                    }
+                                                                    className="border p-1 rounded w-full"
+                                                                    min={0}
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    value={ventaEditada.subtotal ?? venta.subtotal}
+                                                                    onChange={(e) =>
+                                                                        setVentaEditada((prev) => ({
+                                                                            ...prev,
+                                                                            subtotal: parseFloat(e.target.value),
+                                                                        }))
+                                                                    }
+                                                                    className="border p-1 rounded w-full"
+                                                                    min={0}
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    value={ventaEditada.igv ?? venta.igv}
+                                                                    onChange={(e) =>
+                                                                        setVentaEditada((prev) => ({
+                                                                            ...prev,
+                                                                            igv: parseFloat(e.target.value),
+                                                                        }))
+                                                                    }
+                                                                    className="border p-1 rounded w-full"
+                                                                    min={0}
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    value={ventaEditada.total ?? venta.total}
+                                                                    onChange={(e) =>
+                                                                        setVentaEditada((prev) => ({
+                                                                            ...prev,
+                                                                            total: parseFloat(e.target.value),
+                                                                        }))
+                                                                    }
+                                                                    className="border p-1 rounded w-full"
+                                                                    min={0}
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <div className="flex flex-col items-center gap-1">
+                                                                    <button
+                                                                        onClick={() => guardarEdicion(venta.id)}
+                                                                        title="Guardar"
+                                                                        className="text-green-600 hover:text-green-700"
+                                                                    >
+                                                                        <Save size={18} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setVentaEditando(null);
+                                                                            setVentaEditada({});
+                                                                        }}
+                                                                        title="Cancelar"
+                                                                        className="text-gray-600 hover:text-gray-700"
+                                                                    >
+                                                                        <X size={18} />
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <td className="p-2">{venta.cliente}</td>
+                                                            <td className="p-2">{venta.area}</td>
+                                                            <td className="p-2">{venta.servicio}</td>
+                                                            <td className="p-2">{venta.moneda}</td>
+                                                            <td className="p-2">{venta.comprobante}</td>
+                                                            <td className="p-2">{venta.mesServicio}</td>
+                                                            <td className="p-2">{venta.fechaFactura}</td>
+                                                            <td className="p-2">{venta.plazoDePago}</td>
+                                                            <td className="p-2 text-center">
+                                                                {(() => {
+                                                                    const estado = calcularEstado(venta.fechaFactura, Number(venta.plazoDePago));
+
+                                                                    if (estado.texto === "Pagado") {
+                                                                        return <span className="font-bold text-blue-600">Pagado</span>;
+                                                                    }
+
+                                                                    return (
+                                                                        <>
+                                                                            <span
+                                                                                className={`inline-block w-3 h-3 rounded-full animate-pulse ${estado.color}`}
+                                                                                data-tooltip-id={`tooltip-${venta.id}`}
+                                                                                data-tooltip-content={estado.texto}
+                                                                            />
+                                                                            <Tooltip
+                                                                                id={`tooltip-${venta.id}`}
+                                                                                place="top"
+                                                                                className="z-50"
+                                                                            />
+                                                                        </>
+                                                                    );
+                                                                })()}
+                                                            </td>
+                                                            <td className="p-2">{venta.fechaPagoCtaCte}</td>
+                                                            <td className="p-2">
+                                                                {typeof venta.abonoCtaCte === "number"
+                                                                    ? venta.abonoCtaCte.toFixed(2)
+                                                                    : "-"}
+                                                            </td>
+                                                            <td className="p-2">{venta.fechaPagoDeducible}</td>
+                                                            <td className="p-2">
+                                                                {typeof venta.igvdeducible === "number"
+                                                                    ? venta.igvdeducible.toFixed(2)
+                                                                    : "-"}
+                                                            </td>
+                                                            <td className="p-2">
+                                                                {typeof venta.subtotal === "number"
+                                                                    ? venta.subtotal.toFixed(2)
+                                                                    : "-"}
+                                                            </td>
+                                                            <td className="p-2">
+                                                                {typeof venta.igv === "number"
+                                                                    ? venta.igv.toFixed(2)
+                                                                    : "-"}
+                                                            </td>
+                                                            <td className="p-2">
+                                                                {typeof venta.total === "number"
+                                                                    ? venta.total.toFixed(2)
+                                                                    : "-"}
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <div className="flex flex-col items-center gap-1">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setVentaEditando(venta.id);
+                                                                            setVentaEditada({ ...venta });
+                                                                        }}
+                                                                        title="Editar"
+                                                                        className="text-yellow-600 hover:text-yellow-700"
+                                                                    >
+                                                                        <Pencil size={18} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setVentaAEliminar(venta.id)}
+                                                                        title="Eliminar"
+                                                                        className="text-red-600 hover:text-red-700"
+                                                                    >
+                                                                        <Trash2 size={18} />
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </>
+                                                    )}
+                                                </SortableRow>
+                                            ))}
+                                        {ventas.length === 0 && (
+                                            <tr>
+                                                <td colSpan={17} className="p-4 text-center text-gray-500">
+                                                    Aún no hay ventas registradas
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </SortableContext>
+                </DndContext>
 
                 <AnimatePresence>
                     {ventaAEliminar && (
@@ -1092,340 +1325,340 @@ export const Ventas = () => {
             <AnimatePresence>
                 {mostrarTablaExpandida && (
                     <div className="fixed inset-0 z-50">
-                    <motion.div
-                        className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50"
-                        style={{ backdropFilter: 'blur(6px)' }}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                    >
                         <motion.div
-                            className="bg-white w-[90vw] max-h-[90vh] overflow-auto rounded-xl shadow-2xl p-6 relative"
-                            initial={{ scale: 0.85, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.85, opacity: 0 }}
-                            transition={{ duration: 0.3 }}
+                            className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50"
+                            style={{ backdropFilter: 'blur(6px)' }}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
                         >
-                            <div className="flex justify-between items-center mb-4">
-                                <h2 className="text-xl font-semibold">Ventas registradas</h2>
-                                <button
-                                    onClick={() => setMostrarTablaExpandida(false)}
-                                    className="text-red-500 font-medium hover:underline"
-                                >
-                                    <X size={30} />
-                                </button>
-                            </div>
-
-                            <div className="w-full overflow-x-auto">
-                                <div className="min-w-[1200px] max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner">
-                                    <table
-                                        ref={tablaRef}
-                                        className="min-w-full table-auto text-sm text-center border-separate border-spacing-0"
+                            <motion.div
+                                className="bg-white w-[90vw] max-h-[90vh] overflow-auto rounded-xl shadow-2xl p-6 relative"
+                                initial={{ scale: 0.85, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.85, opacity: 0 }}
+                                transition={{ duration: 0.3 }}
+                            >
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-xl font-semibold">Ventas registradas</h2>
+                                    <button
+                                        onClick={() => setMostrarTablaExpandida(false)}
+                                        className="text-red-500 font-medium hover:underline"
                                     >
-                                        <thead className="sticky top-0 z-10 bg-white shadow-sm">
-                                        <tr className="bg-gray-200 border-b border-gray-300 text-gray-700 text-sm uppercase">
-                                        <th className="p-2">Cliente</th>
-                                        <th className="p-2">Area</th>
-                                        <th className="p-2">Servicio</th>
-                                        <th className="p-2">Moneda</th>
-                                        <th className="p-2">N° Comprobante</th>
-                                        <th className="p-2">Mes de Servicio</th>
-                                        <th className="p-2">Fecha Factura</th>
-                                        <th className="p-2 text-center">Plazo de Pago (días)</th>
-                                        <th className="p-2 text-center">Estado</th>
-                                        <th className="p-2">F. Abono CTA. CTE</th>
-                                        <th className="p-2">Abono CTA. CTE</th>
-                                        <th className="p-2">F. Abono CTA. DETRAC</th>
-                                        <th className="p-2">IAbono CTA. DETRAC</th>
-                                        <th className="p-2">Subtotal</th>
-                                        <th className="p-2">IGV</th>
-                                        <th className="p-2">Total</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {ventas.map((venta) => (
-                                        <tr key={venta.id} className="border-t">
-                                            {ventaEditando === venta.id ? (
-                                                <>
-                                                    <td className="p-2">
-                                                        <input
-                                                            type="text"
-                                                            value={ventaEditada.cliente ?? venta.cliente}
-                                                            onChange={(e) =>
-                                                                setVentaEditada((prev) => ({ ...prev, cliente: e.target.value }))
-                                                            }
-                                                            className="border p-1 rounded w-full"
-                                                        />
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <input
-                                                            type="text"
-                                                            value={ventaEditada.area ?? venta.area}
-                                                            onChange={(e) =>
-                                                                setVentaEditada((prev) => ({ ...prev, area: e.target.value }))
-                                                            }
-                                                            className="border p-1 rounded w-full"
-                                                        />
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <input
-                                                            type="text"
-                                                            value={ventaEditada.servicio ?? venta.servicio}
-                                                            onChange={(e) =>
-                                                                setVentaEditada((prev) => ({ ...prev, servicio: e.target.value }))
-                                                            }
-                                                            className="border p-1 rounded w-full"
-                                                        />
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <select
-                                                            value={ventaEditada.moneda ?? venta.moneda}
-                                                            onChange={(e) =>
-                                                                setVentaEditada((prev) => ({ ...prev, moneda: e.target.value as "S/" | "$" }))
-                                                            }
-                                                            className="border p-1 rounded w-full"
-                                                        >
-                                                            <option value="S/">S/</option>
-                                                            <option value="$">$</option>
-                                                        </select>
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <input
-                                                            type="text"
-                                                            value={ventaEditada.comprobante ?? venta.comprobante}
-                                                            onChange={(e) =>
-                                                                setVentaEditada((prev) => ({ ...prev, comprobante: e.target.value }))
-                                                            }
-                                                            className="border p-1 rounded w-full"
-                                                        />
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <input
-                                                            type="text"
-                                                            value={ventaEditada.mesServicio ?? venta.mesServicio}
-                                                            onChange={(e) =>
-                                                                setVentaEditada((prev) => ({ ...prev, mesServicio: e.target.value }))
-                                                            }
-                                                            className="border p-1 rounded w-full"
-                                                        />
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <input
-                                                            type="date"
-                                                            value={ventaEditada.fechaFactura ?? venta.fechaFactura}
-                                                            onChange={(e) =>
-                                                                setVentaEditada((prev) => ({ ...prev, fechaFactura: e.target.value }))
-                                                            }
-                                                            className="border p-1 rounded w-full"
-                                                        />
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <input
-                                                            type="number"
-                                                            value={ventaEditada.plazoDePago ?? venta.plazoDePago ?? ""}
-                                                            onChange={(e) =>
-                                                                setVentaEditada((prev) => ({
-                                                                    ...prev,
-                                                                    plazoDePago: parseInt(e.target.value) || 0,
-                                                                }))
-                                                            }
-                                                            className="border p-1 rounded w-full"
-                                                            min={0}
-                                                        />
-                                                    </td>
-                                                    <td className="p-2">
-                                                        {(() => {
-                                                            const estado = calcularEstado(
-                                                                venta.fechaFactura,
-                                                                typeof ventaEditada.plazoDePago === "number" ? ventaEditada.plazoDePago : Number(ventaEditada.plazoDePago) || 0
-                                                            );
-                                                            return (
-                                                                <>
-                                                                    <span
-                                                                        className={`inline-block w-3 h-3 rounded-full animate-pulse ${estado.color}`}
-                                                                        data-tooltip-id={`tooltip-${venta.id}`}
-                                                                        data-tooltip-content={estado.texto}
-                                                                    />
-                                                                    <Tooltip
-                                                                        id={`tooltip-${venta.id}`}
-                                                                        place="top"
-                                                                        className="z-50"
-                                                                    />
-                                                                </>
-                                                            );
-                                                        })()}
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <input
-                                                            type="date"
-                                                            value={ventaEditada.fechaPagoCtaCte ?? venta.fechaPagoCtaCte}
-                                                            onChange={(e) =>
-                                                                setVentaEditada((prev) => ({ ...prev, fechaPagoCtaCte: e.target.value }))
-                                                            }
-                                                            className="border p-1 rounded w-full"
-                                                        />
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <input
-                                                            type="number"
-                                                            value={ventaEditada.abonoCtaCte ?? venta.abonoCtaCte}
-                                                            onChange={(e) =>
-                                                                setVentaEditada((prev) => ({
-                                                                    ...prev,
-                                                                    abonoCtaCte: parseFloat(e.target.value),
-                                                                }))
-                                                            }
-                                                            className="border p-1 rounded w-full"
-                                                            min={0}
-                                                        />
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <input
-                                                            type="date"
-                                                            value={ventaEditada.fechaPagoDeducible ?? venta.fechaPagoDeducible}
-                                                            onChange={(e) =>
-                                                                setVentaEditada((prev) => ({ ...prev, fechaPagoDeducible: e.target.value }))
-                                                            }
-                                                            className="border p-1 rounded w-full"
-                                                        />
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <input
-                                                            type="number"
-                                                            value={ventaEditada.igvdeducible ?? venta.igvdeducible}
-                                                            onChange={(e) =>
-                                                                setVentaEditada((prev) => ({
-                                                                    ...prev,
-                                                                    igvdeducible: parseFloat(e.target.value),
-                                                                }))
-                                                            }
-                                                            className="border p-1 rounded w-full"
-                                                            min={0}
-                                                        />
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <input
-                                                            type="number"
-                                                            value={ventaEditada.subtotal ?? venta.subtotal}
-                                                            onChange={(e) =>
-                                                                setVentaEditada((prev) => ({
-                                                                    ...prev,
-                                                                    subtotal: parseFloat(e.target.value),
-                                                                }))
-                                                            }
-                                                            className="border p-1 rounded w-full"
-                                                            min={0}
-                                                        />
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <input
-                                                            type="number"
-                                                            value={ventaEditada.igv ?? venta.igv}
-                                                            onChange={(e) =>
-                                                                setVentaEditada((prev) => ({
-                                                                    ...prev,
-                                                                    igv: parseFloat(e.target.value),
-                                                                }))
-                                                            }
-                                                            className="border p-1 rounded w-full"
-                                                            min={0}
-                                                        />
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <input
-                                                            type="number"
-                                                            value={ventaEditada.total ?? venta.total}
-                                                            onChange={(e) =>
-                                                                setVentaEditada((prev) => ({
-                                                                    ...prev,
-                                                                    total: parseFloat(e.target.value),
-                                                                }))
-                                                            }
-                                                            className="border p-1 rounded w-full"
-                                                            min={0}
-                                                        />
-                                                    </td>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <td className="p-2">{venta.cliente}</td>
-                                                    <td className="p-2">{venta.area}</td>
-                                                    <td className="p-2">{venta.servicio}</td>
-                                                    <td className="p-2">{venta.moneda}</td>
-                                                    <td className="p-2">{venta.comprobante}</td>
-                                                    <td className="p-2">{venta.mesServicio}</td>
-                                                    <td className="p-2">{venta.fechaFactura}</td>
-                                                    <td className="p-2 text-center">{venta.plazoDePago ?? "-"}</td>
-                                                    <td className="p-2 text-center">
-                                                      {(() => {
-                                                        const estado = calcularEstado(venta.fechaFactura, Number(venta.plazoDePago));
-    
-                                                        if (estado.texto === "Pagado") {
-                                                          return <span className="font-bold text-blue-600">Pagado</span>;
-                                                        }
-
-                                                        return (
-                                                          <>
-                                                            <span
-                                                              className={`inline-block w-3 h-3 rounded-full animate-pulse ${estado.color}`}
-                                                              data-tooltip-id={`tooltip-${venta.id}`}
-                                                              data-tooltip-content={estado.texto}
-                                                            />
-                                                            <Tooltip
-                                                              id={`tooltip-${venta.id}`}
-                                                              place="top"
-                                                              className="z-50"
-                                                            />
-                                                          </>
-                                                        );
-                                                      })()}
-                                                    </td>
-                                                    <td className="p-2">{venta.fechaPagoCtaCte}</td>
-                                                        <td className="p-2">
-                                                            {typeof venta.abonoCtaCte === "number"
-                                                                ? venta.abonoCtaCte.toFixed(2)
-                                                                : "-"}
-                                                        </td>
-                                                        <td className="p-2">{venta.fechaPagoDeducible}</td>
-                                                        <td className="p-2">
-                                                            {typeof venta.igvdeducible === "number"
-                                                                ? venta.igvdeducible.toFixed(2)
-                                                                : "-"}
-                                                        </td>
-                                                        <td className="p-2">
-                                                            {typeof venta.subtotal === "number"
-                                                                ? venta.subtotal.toFixed(2)
-                                                                : "-"}
-                                                        </td>
-                                                        <td className="p-2">
-                                                            {typeof venta.igv === "number"
-                                                                ? venta.igv.toFixed(2)
-                                                                : "-"}
-                                                        </td>
-                                                        <td className="p-2">
-                                                            {typeof venta.total === "number"
-                                                                ? venta.total.toFixed(2)
-                                                                : "-"}
-                                                        </td>
-                                                </>
-                                            )}
-                                        </tr>
-                                    ))}
-
-                                    {ventas.length === 0 && (
-                                        <tr>
-                                            <td colSpan={12} className="p-4 text-center text-gray-500">
-                                                Aún no hay ventas registradas
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                                    </table>
+                                        <X size={30} />
+                                    </button>
                                 </div>
-                            </div>
 
+                                <div className="w-full overflow-x-auto">
+                                    <div className="min-w-[1200px] max-h-[60vh] overflow-y-auto border rounded-lg shadow-inner">
+                                        <table
+                                            ref={tablaRef}
+                                            className="min-w-full table-auto text-sm text-center border-separate border-spacing-0"
+                                        >
+                                            <thead className="sticky top-0 z-10 bg-white shadow-sm">
+                                                <tr className="bg-gray-200 border-b border-gray-300 text-gray-700 text-sm uppercase">
+                                                    <th className="p-2">Cliente</th>
+                                                    <th className="p-2">Area</th>
+                                                    <th className="p-2">Servicio</th>
+                                                    <th className="p-2">Moneda</th>
+                                                    <th className="p-2">N° Comprobante</th>
+                                                    <th className="p-2">Mes de Servicio</th>
+                                                    <th className="p-2">Fecha Factura</th>
+                                                    <th className="p-2 text-center">Plazo de Pago (días)</th>
+                                                    <th className="p-2 text-center">Estado</th>
+                                                    <th className="p-2">F. Abono CTA. CTE</th>
+                                                    <th className="p-2">Abono CTA. CTE</th>
+                                                    <th className="p-2">F. Abono CTA. DETRAC</th>
+                                                    <th className="p-2">IAbono CTA. DETRAC</th>
+                                                    <th className="p-2">Subtotal</th>
+                                                    <th className="p-2">IGV</th>
+                                                    <th className="p-2">Total</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {ventas.map((venta) => (
+                                                    <tr key={venta.id} className="border-t">
+                                                        {ventaEditando === venta.id ? (
+                                                            <>
+                                                                <td className="p-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={ventaEditada.cliente ?? venta.cliente}
+                                                                        onChange={(e) =>
+                                                                            setVentaEditada((prev) => ({ ...prev, cliente: e.target.value }))
+                                                                        }
+                                                                        className="border p-1 rounded w-full"
+                                                                    />
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={ventaEditada.area ?? venta.area}
+                                                                        onChange={(e) =>
+                                                                            setVentaEditada((prev) => ({ ...prev, area: e.target.value }))
+                                                                        }
+                                                                        className="border p-1 rounded w-full"
+                                                                    />
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={ventaEditada.servicio ?? venta.servicio}
+                                                                        onChange={(e) =>
+                                                                            setVentaEditada((prev) => ({ ...prev, servicio: e.target.value }))
+                                                                        }
+                                                                        className="border p-1 rounded w-full"
+                                                                    />
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    <select
+                                                                        value={ventaEditada.moneda ?? venta.moneda}
+                                                                        onChange={(e) =>
+                                                                            setVentaEditada((prev) => ({ ...prev, moneda: e.target.value as "S/" | "$" }))
+                                                                        }
+                                                                        className="border p-1 rounded w-full"
+                                                                    >
+                                                                        <option value="S/">S/</option>
+                                                                        <option value="$">$</option>
+                                                                    </select>
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={ventaEditada.comprobante ?? venta.comprobante}
+                                                                        onChange={(e) =>
+                                                                            setVentaEditada((prev) => ({ ...prev, comprobante: e.target.value }))
+                                                                        }
+                                                                        className="border p-1 rounded w-full"
+                                                                    />
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={ventaEditada.mesServicio ?? venta.mesServicio}
+                                                                        onChange={(e) =>
+                                                                            setVentaEditada((prev) => ({ ...prev, mesServicio: e.target.value }))
+                                                                        }
+                                                                        className="border p-1 rounded w-full"
+                                                                    />
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    <input
+                                                                        type="date"
+                                                                        value={ventaEditada.fechaFactura ?? venta.fechaFactura}
+                                                                        onChange={(e) =>
+                                                                            setVentaEditada((prev) => ({ ...prev, fechaFactura: e.target.value }))
+                                                                        }
+                                                                        className="border p-1 rounded w-full"
+                                                                    />
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    <input
+                                                                        type="number"
+                                                                        value={ventaEditada.plazoDePago ?? venta.plazoDePago ?? ""}
+                                                                        onChange={(e) =>
+                                                                            setVentaEditada((prev) => ({
+                                                                                ...prev,
+                                                                                plazoDePago: parseInt(e.target.value) || 0,
+                                                                            }))
+                                                                        }
+                                                                        className="border p-1 rounded w-full"
+                                                                        min={0}
+                                                                    />
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    {(() => {
+                                                                        const estado = calcularEstado(
+                                                                            venta.fechaFactura,
+                                                                            typeof ventaEditada.plazoDePago === "number" ? ventaEditada.plazoDePago : Number(ventaEditada.plazoDePago) || 0
+                                                                        );
+                                                                        return (
+                                                                            <>
+                                                                                <span
+                                                                                    className={`inline-block w-3 h-3 rounded-full animate-pulse ${estado.color}`}
+                                                                                    data-tooltip-id={`tooltip-${venta.id}`}
+                                                                                    data-tooltip-content={estado.texto}
+                                                                                />
+                                                                                <Tooltip
+                                                                                    id={`tooltip-${venta.id}`}
+                                                                                    place="top"
+                                                                                    className="z-50"
+                                                                                />
+                                                                            </>
+                                                                        );
+                                                                    })()}
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    <input
+                                                                        type="date"
+                                                                        value={ventaEditada.fechaPagoCtaCte ?? venta.fechaPagoCtaCte}
+                                                                        onChange={(e) =>
+                                                                            setVentaEditada((prev) => ({ ...prev, fechaPagoCtaCte: e.target.value }))
+                                                                        }
+                                                                        className="border p-1 rounded w-full"
+                                                                    />
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    <input
+                                                                        type="number"
+                                                                        value={ventaEditada.abonoCtaCte ?? venta.abonoCtaCte}
+                                                                        onChange={(e) =>
+                                                                            setVentaEditada((prev) => ({
+                                                                                ...prev,
+                                                                                abonoCtaCte: parseFloat(e.target.value),
+                                                                            }))
+                                                                        }
+                                                                        className="border p-1 rounded w-full"
+                                                                        min={0}
+                                                                    />
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    <input
+                                                                        type="date"
+                                                                        value={ventaEditada.fechaPagoDeducible ?? venta.fechaPagoDeducible}
+                                                                        onChange={(e) =>
+                                                                            setVentaEditada((prev) => ({ ...prev, fechaPagoDeducible: e.target.value }))
+                                                                        }
+                                                                        className="border p-1 rounded w-full"
+                                                                    />
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    <input
+                                                                        type="number"
+                                                                        value={ventaEditada.igvdeducible ?? venta.igvdeducible}
+                                                                        onChange={(e) =>
+                                                                            setVentaEditada((prev) => ({
+                                                                                ...prev,
+                                                                                igvdeducible: parseFloat(e.target.value),
+                                                                            }))
+                                                                        }
+                                                                        className="border p-1 rounded w-full"
+                                                                        min={0}
+                                                                    />
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    <input
+                                                                        type="number"
+                                                                        value={ventaEditada.subtotal ?? venta.subtotal}
+                                                                        onChange={(e) =>
+                                                                            setVentaEditada((prev) => ({
+                                                                                ...prev,
+                                                                                subtotal: parseFloat(e.target.value),
+                                                                            }))
+                                                                        }
+                                                                        className="border p-1 rounded w-full"
+                                                                        min={0}
+                                                                    />
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    <input
+                                                                        type="number"
+                                                                        value={ventaEditada.igv ?? venta.igv}
+                                                                        onChange={(e) =>
+                                                                            setVentaEditada((prev) => ({
+                                                                                ...prev,
+                                                                                igv: parseFloat(e.target.value),
+                                                                            }))
+                                                                        }
+                                                                        className="border p-1 rounded w-full"
+                                                                        min={0}
+                                                                    />
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    <input
+                                                                        type="number"
+                                                                        value={ventaEditada.total ?? venta.total}
+                                                                        onChange={(e) =>
+                                                                            setVentaEditada((prev) => ({
+                                                                                ...prev,
+                                                                                total: parseFloat(e.target.value),
+                                                                            }))
+                                                                        }
+                                                                        className="border p-1 rounded w-full"
+                                                                        min={0}
+                                                                    />
+                                                                </td>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <td className="p-2">{venta.cliente}</td>
+                                                                <td className="p-2">{venta.area}</td>
+                                                                <td className="p-2">{venta.servicio}</td>
+                                                                <td className="p-2">{venta.moneda}</td>
+                                                                <td className="p-2">{venta.comprobante}</td>
+                                                                <td className="p-2">{venta.mesServicio}</td>
+                                                                <td className="p-2">{venta.fechaFactura}</td>
+                                                                <td className="p-2 text-center">{venta.plazoDePago ?? "-"}</td>
+                                                                <td className="p-2 text-center">
+                                                                    {(() => {
+                                                                        const estado = calcularEstado(venta.fechaFactura, Number(venta.plazoDePago));
+
+                                                                        if (estado.texto === "Pagado") {
+                                                                            return <span className="font-bold text-blue-600">Pagado</span>;
+                                                                        }
+
+                                                                        return (
+                                                                            <>
+                                                                                <span
+                                                                                    className={`inline-block w-3 h-3 rounded-full animate-pulse ${estado.color}`}
+                                                                                    data-tooltip-id={`tooltip-${venta.id}`}
+                                                                                    data-tooltip-content={estado.texto}
+                                                                                />
+                                                                                <Tooltip
+                                                                                    id={`tooltip-${venta.id}`}
+                                                                                    place="top"
+                                                                                    className="z-50"
+                                                                                />
+                                                                            </>
+                                                                        );
+                                                                    })()}
+                                                                </td>
+                                                                <td className="p-2">{venta.fechaPagoCtaCte}</td>
+                                                                <td className="p-2">
+                                                                    {typeof venta.abonoCtaCte === "number"
+                                                                        ? venta.abonoCtaCte.toFixed(2)
+                                                                        : "-"}
+                                                                </td>
+                                                                <td className="p-2">{venta.fechaPagoDeducible}</td>
+                                                                <td className="p-2">
+                                                                    {typeof venta.igvdeducible === "number"
+                                                                        ? venta.igvdeducible.toFixed(2)
+                                                                        : "-"}
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    {typeof venta.subtotal === "number"
+                                                                        ? venta.subtotal.toFixed(2)
+                                                                        : "-"}
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    {typeof venta.igv === "number"
+                                                                        ? venta.igv.toFixed(2)
+                                                                        : "-"}
+                                                                </td>
+                                                                <td className="p-2">
+                                                                    {typeof venta.total === "number"
+                                                                        ? venta.total.toFixed(2)
+                                                                        : "-"}
+                                                                </td>
+                                                            </>
+                                                        )}
+                                                    </tr>
+                                                ))}
+
+                                                {ventas.length === 0 && (
+                                                    <tr>
+                                                        <td colSpan={12} className="p-4 text-center text-gray-500">
+                                                            Aún no hay ventas registradas
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                            </motion.div>
                         </motion.div>
-                    </motion.div>
                     </div>
                 )}
             </AnimatePresence>
