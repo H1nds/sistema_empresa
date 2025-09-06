@@ -594,7 +594,7 @@ export const Ventas = () => {
         return { color: "bg-green-500", texto: "Dentro del plazo" };
     };
 
-    const handleDragEnd = async ({ active, over }: DragEndEvent) => {
+    const handleDragEnd = async ({ active, over }: any) => {
         if (!over || active.id === over.id) {
             console.log("🚫 drop inválido o mismo elemento, nada que hacer");
             return;
