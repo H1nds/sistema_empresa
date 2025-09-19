@@ -120,9 +120,10 @@ export const Ventas = () => {
     const [searchQuery, setSearchQuery] = useState<string>("");
 
     // Generar años únicos a partir de los datos
+    // Generar años únicos a partir de los datos (sin desfase de zona horaria)
     const years = Array.from(
-        new Set(ventas.map((v) => new Date(v.fechaFactura).getFullYear().toString()))
-    ).sort((a, b) => +b - +a);
+        new Set(ventas.map(({ fechaFactura }) => fechaFactura.split('-')[0]))
+    ).sort((a, b) => Number(b) - Number(a));
 
     // Opciones de mes
     const months = [
@@ -624,31 +625,37 @@ export const Ventas = () => {
     };
 
     const filteredVentas = useMemo(() => {
-        return order
-            .map((id) => ventas.find((v) => v.id === id)!)
-            .filter((v) => {
-                const fecha = new Date(v.fechaFactura);
-                // Filtrar por año
-                if (yearFilter !== "All" && fecha.getFullYear().toString() !== yearFilter)
-                    return false;
-                // Filtrar por mes
-                if (
-                    monthFilter !== "All" &&
-                    (fecha.getMonth() + 1).toString() !== monthFilter
-                )
-                    return false;
-                // Filtrar por texto
-                if (searchQuery) {
-                    const term = searchQuery.toLowerCase();
-                    return (
-                        v.cliente.toLowerCase().includes(term) ||
-                        v.area.toLowerCase().includes(term) ||
-                        v.servicio.toLowerCase().includes(term) ||
-                        v.comprobante.toLowerCase().includes(term)
-                    );
-                }
-                return true;
-            });
+      return order
+        .map((id) => ventas.find((v) => v.id === id)!)
+        .filter((v) => {
+          // Extraemos año y mes literalmente de "YYYY-MM-DD"
+          const [yearStr, monthStr] = v.fechaFactura.split('-');
+
+          // Filtrar por año
+          if (yearFilter !== "All" && yearStr !== yearFilter) {
+            return false;
+          }
+          // Filtrar por mes
+          if (
+            monthFilter !== "All" &&
+            parseInt(monthStr, 10).toString() !== monthFilter
+          ) {
+            return false;
+          }
+
+          // Filtrar por texto (tu lógica actual)
+          if (searchQuery) {
+            const term = searchQuery.toLowerCase();
+            return (
+              v.cliente.toLowerCase().includes(term) ||
+              v.area.toLowerCase().includes(term) ||
+              v.servicio.toLowerCase().includes(term) ||
+              v.comprobante.toLowerCase().includes(term)
+            );
+          }
+
+          return true;
+        });
     }, [ventas, order, yearFilter, monthFilter, searchQuery]);
 
     const filteredOrder = useMemo(
