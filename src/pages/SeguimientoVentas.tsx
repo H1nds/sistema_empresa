@@ -95,7 +95,7 @@ export const SeguimientoVentas = () => {
             };
 
             html2pdf.default()
-                .set(opt)
+                .set(opt as any)
                 .from(elemento)
                 .save();
         });
