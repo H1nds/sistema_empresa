@@ -42,20 +42,21 @@ export const SeguimientoVentas = () => {
 
 
     // Efecto para traer el tipo de cambio desde un servicio SUNAT (apis.net.pe)
-    useEffect(() => {
-        const fetchTipoCambio = async () => {
-            try {
-                const res = await fetch("/api/tipo-cambio-sunat");
-                const { venta } = await res.json();
-                setTipoCambio(parseFloat(venta));   // dejamos solo el número
-            } catch (err) {
-                console.error("Error al traer tipo de cambio SUNAT:", err);
-            }
-        };
+   useEffect(() => {
+      const fetchTipoCambio = async () => {
+        try {
+          const res = await fetch('/api/tipo-cambio-sunat');
+          const json = await res.json();
+          if (json.venta) setTipoCambio(parseFloat(json.venta));
+          else console.error('API devolvió:', json);
+        } catch (err) {
+          console.error('Error al traer tipo de cambio SUNAT:', err);
+        }
+      };
 
-        fetchTipoCambio();
-        const intervalo = setInterval(fetchTipoCambio, 1000 * 60 * 60); // refresca cada hora
-        return () => clearInterval(intervalo);
+      fetchTipoCambio();
+      const intervalo = setInterval(fetchTipoCambio, 1000 * 60 * 60);
+      return () => clearInterval(intervalo);
     }, []);
 
     useEffect(() => {
