@@ -427,8 +427,14 @@ export const SeguimientoVentas = () => {
                     <ResponsiveContainer width="100%" height={360}>
                       <BarChart data={obtenerDatosPorClienteFiltrada().slice(0, 25)}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="cliente" interval={0} angle={-25} textAnchor="end" height={80} />
-                        <YAxis />
+                        <XAxis 
+                          dataKey="cliente" 
+                          interval={0} 
+                          angle={-45}             // <-- Aumentamos el ángulo para más espacio
+                          textAnchor="end" 
+                          height={80} 
+                          tick={{ fontSize: 10 }} // <-- Añadimos esto para reducir la fuente
+                        />
                         <Tooltip formatter={(value: number) =>
                           `S/ ${value.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                         } />
