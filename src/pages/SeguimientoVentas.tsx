@@ -21,6 +21,8 @@ export const SeguimientoVentas = () => {
     const [modalVisible, setModalVisible] = useState(false);
     const [areaSeleccionada, setAreaSeleccionada] = useState("");
     const [ventasAreaSeleccionada, setVentasAreaSeleccionada] = useState<any[]>([]);
+    const [clienteSeleccionado, setClienteSeleccionado] = useState("");
+    const [ventasClienteSeleccionada, setVentasClienteSeleccionada] = useState<any[]>([]);
     const [dataComparacionArea, setDataComparacionArea] = useState <
         { area: string;[year: number]: number }[]
     >([]);
@@ -40,6 +42,20 @@ export const SeguimientoVentas = () => {
         setModalVisible(true);
     };
 
+    const handleBarClickCliente = (data: any) => {
+        const cliente = data.cliente;
+        const ventasFiltradasCliente = ventas.filter(venta => {
+            const fecha = convertirFechaFactura(venta.fechaFactura);
+            const matchDate = mesSeleccionado
+                ? fecha.getMonth() + 1 === mesSeleccionado && fecha.getFullYear() === anioSeleccionado
+                : fecha.getFullYear() === anioSeleccionado;
+            return matchDate && (venta.cliente || "Sin cliente") === cliente;
+        });
+
+        setVentasClienteSeleccionada(ventasFiltradasCliente);
+        setClienteSeleccionado(cliente);
+        setModalVisible(true);
+    };
 
     // Efecto para traer el tipo de cambio desde un servicio SUNAT (apis.net.pe)
    useEffect(() => {
@@ -119,6 +135,37 @@ export const SeguimientoVentas = () => {
         area,
         total,
       }));
+    };
+
+    const obtenerDatosPorClienteFiltrada = () => {
+        const ventasFiltradas = ventas.filter(venta => {
+            const fecha = convertirFechaFactura(venta.fechaFactura);
+            return mesSeleccionado
+                ? fecha.getMonth() + 1 === mesSeleccionado && fecha.getFullYear() === anioSeleccionado
+                : fecha.getFullYear() === anioSeleccionado;
+        });
+
+        // mapa con clave normalizada -> { display: string, total: number }
+        const mapaCliente: Record<string, { display: string; total: number }> = {};
+
+        ventasFiltradas.forEach(venta => {
+            const raw = (venta.cliente ?? "Sin cliente").toString();
+            const key = raw.trim().toLowerCase(); // normaliza para deduplicar
+            const monto = venta.moneda === "$"
+                ? ((venta.total || 0) * (tipoCambio ?? 0))
+                : (venta.total || 0);
+
+            if (!mapaCliente[key]) {
+                mapaCliente[key] = { display: raw.trim() || "Sin cliente", total: 0 };
+            }
+
+            mapaCliente[key].total += monto;
+        });
+
+        // transformar a array ordenado de mayor a menor
+        return Object.values(mapaCliente)
+            .map(item => ({ cliente: item.display, total: item.total }))
+            .sort((a, b) => b.total - a.total);
     };
 
     const descargarPDF = () => {
@@ -273,127 +320,133 @@ export const SeguimientoVentas = () => {
               className="mx-auto p-6 bg-white rounded-lg shadow"
               style={{ maxWidth: "100%" }}
             >
-              <div className="w-full flex gap-4 min-h-[300px] rounded-lg shadow p-4 bg-white">
-                {/* Pastel */}
-                <div className="w-full md:w-1/2">
-                  <h2 className="text-lg font-semibold mb-4">
-                    Ingresos Totales {mesSeleccionado ? "del Mes" : "Anuales"}
-                  </h2>
+              {/* Row superior: Pie + Área */}
+                <div className="w-full flex gap-4 min-h-[300px] rounded-lg shadow p-4 bg-white">
+                  {/* Columna izquierda: Pastel */}
+                  <div className="w-full md:w-1/2">
+                    <h2 className="text-lg font-semibold mb-4">
+                      Ingresos Totales {mesSeleccionado ? "del Mes" : "Anuales"}
+                    </h2>
 
-                  {/* 3 columnas: PieChart (2/3) + Resumen (1/3) */}
-                  <div className="flex flex-col md:flex-row gap-4">
-                    {/* Gráfico */}
-                    <div className="flex-1">
-                      <ResponsiveContainer width="100%" height={300}>
-                        <PieChart key={JSON.stringify(datosPie)}>
-                          <Pie
-                            data={datosPie}
-                            dataKey="valor"
-                            nameKey="moneda"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={80}
-                            labelLine={false}
-                            label={({ name, value }) =>
-                              `${name}: ${typeof value === 'number'
-                                ? value.toLocaleString('es-PE', {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2
-                                  })
-                                : '0.00'}`
-                            }
-                          >
-                            <Cell fill="#10B981" />
-                            <Cell fill="#3B82F6" />
-                          </Pie>
-                          <Tooltip formatter={(value: number) =>
-                              `S/. ${value.toLocaleString('es-PE', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2
-                              })}`
+                    <div className="flex flex-col md:flex-row gap-4">
+                      <div className="flex-1">
+                        <ResponsiveContainer width="100%" height={300}>
+                          <PieChart key={JSON.stringify(datosPie)}>
+                            <Pie
+                              data={datosPie}
+                              dataKey="valor"
+                              nameKey="moneda"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={80}
+                              labelLine={false}
+                              label={({ name, value }) =>
+                                `${name}: ${typeof value === 'number'
+                                  ? value.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                                  : '0.00'}`
+                              }
+                            >
+                              <Cell fill="#10B981" />
+                              <Cell fill="#3B82F6" />
+                            </Pie>
+                            <Tooltip formatter={(value: number) =>
+                              `S/. ${value.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                             }/>
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
 
-                    {/* Resumen “Venta Anual” */}
-                    <div className="w-full md:w-1/3 bg-gray-50 p-4 rounded-lg shadow-inner">
-                      <h3 className="font-semibold text-gray-700 mb-2">Venta Anual</h3>
+                      <div className="w-full md:w-1/3 bg-gray-50 p-4 rounded-lg shadow-inner">
+                        <h3 className="font-semibold text-gray-700 mb-2">Venta Anual</h3>
 
-                      <p className="text-sm text-gray-600 mb-2">
+                        <p className="text-sm text-gray-600 mb-2">
                           Valor del dólar actualmente:
                           <span className="font-medium ml-1">
                             {tipoCambio != null
-                              ? ` S/ ${tipoCambio.toLocaleString("es-PE", {
-                                  minimumFractionDigits: 3,
-                                  maximumFractionDigits: 3
-                                })}`
+                              ? ` S/ ${tipoCambio.toLocaleString("es-PE", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`
                               : "Cargando..."}
                           </span>
-                      </p>
+                        </p>
 
-                      <p className="text-sm text-gray-600 mb-2">
-                        Ventas de dólares a soles:
-                        <span className="font-medium ml-1">
-                          {tipoCambio != null
-                              ? ` S/ ${resumenVentasConvertidas.toLocaleString("es-PE", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2
-                                })}`
+                        <p className="text-sm text-gray-600 mb-2">
+                          Ventas de dólares a soles:
+                          <span className="font-medium ml-1">
+                            {tipoCambio != null
+                              ? ` S/ ${resumenVentasConvertidas.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                               : "-"}
-                        </span>
-                      </p>
+                          </span>
+                        </p>
 
-                      <p className="text-sm text-gray-600">
-                        Ventas anuales totales:
-                        <span className="font-bold ml-1">
-                          S/ {tipoCambio != null
-                              ? resumenTotalAnualPen.toLocaleString("es-PE", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2
-                                })
-                              : resumenTotalSoles.toLocaleString("es-PE", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2
-                                })}
-                        </span>
-                      </p>
+                        <p className="text-sm text-gray-600">
+                          Ventas anuales totales:
+                          <span className="font-bold ml-1">
+                            S/ {tipoCambio != null
+                              ? resumenTotalAnualPen.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : resumenTotalSoles.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </p>
+                      </div>
                     </div>
                   </div>
+
+                  {/* Columna derecha: Área */}
+                  <div className="w-full md:w-1/2">
+                    <h2 className="text-lg font-semibold mb-4">Servicios por Área {mesSeleccionado ? "del Mes" : "(Anual)"}</h2>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={obtenerDatosPorAreaFiltrada()}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="area" />
+                        <YAxis />
+                        <Tooltip formatter={(value: number) =>
+                          value.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        }/>
+                        <Legend />
+                        <Bar dataKey="total" fill="#EF4444" onClick={handleBarClick}>
+                          <LabelList
+                            dataKey="total"
+                            position="top"
+                            formatter={(label: unknown) =>
+                              typeof label === 'number'
+                                ? `S/. ${label.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                : ''
+                            }
+                          />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-                {/* Barras por Área */}
-                <div className="w-full md:w-1/2">
-                  <h2 className="text-lg font-semibold mb-4">Servicios por Área {mesSeleccionado ? "del Mes" : "(Anual)"}</h2>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={obtenerDatosPorAreaFiltrada()}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="area" />
-                      <YAxis />
-                      <Tooltip formatter={(value: number) =>
-                        value.toLocaleString('es-PE', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2
-                        })
-                      }/>
-                      <Legend />
-                      <Bar dataKey="total" fill="#EF4444" onClick={handleBarClick}>
-                        <LabelList
-                          dataKey="total"
-                          position="top"
-                          formatter={(label: unknown) =>
-                            typeof label === 'number'
-                              ? `S/. ${label.toLocaleString('es-PE', {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2
-                                })}`
-                              : ''
-                          }
-                        />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+
+                {/* Fila inferior: Servicio por Cliente (centrado y con ancho controlado) */}
+                <div className="w-full mt-6 flex justify-center">
+                  <div className="w-full md:w-2/3 bg-white p-4 rounded-lg shadow">
+                    <h2 className="text-lg font-semibold mb-4">
+                      Servicios por Cliente {mesSeleccionado ? "del Mes" : "(Anual)"}
+                    </h2>
+                    <ResponsiveContainer width="100%" height={360}>
+                      <BarChart data={obtenerDatosPorClienteFiltrada().slice(0, 25)}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="cliente" interval={0} angle={-25} textAnchor="end" height={80} />
+                        <YAxis />
+                        <Tooltip formatter={(value: number) =>
+                          `S/ ${value.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        } />
+                        <Legend />
+                        <Bar dataKey="total" fill="#0ea5a3" onClick={handleBarClickCliente}>
+                          <LabelList
+                            dataKey="total"
+                            position="top"
+                            formatter={(label: unknown) =>
+                              typeof label === 'number'
+                                ? `S/ ${label.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                : ''
+                            }
+                          />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
               </div>
             </div>
           </>
@@ -484,27 +537,23 @@ export const SeguimientoVentas = () => {
                 className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden mx-4"
               >
                 <h2 className="text-xl font-semibold mb-4 flex-shrink-0">
-                  Ventas en área: {areaSeleccionada}
+                  {clienteSeleccionado ? `Ventas por cliente: ${clienteSeleccionado}` : `Ventas en área: ${areaSeleccionada}`}
                 </h2>
 
-               <div className="flex-1 overflow-y-auto mb-4 pr-2 max-h-[60vh]">
-                      <ul className="space-y-4">
-                       {ventasAreaSeleccionada.map(venta => (
-                        <li key={venta.id} className="flex justify-between items-center border-b pb-2">
+                <div className="flex-1 overflow-y-auto mb-4 pr-2 max-h-[60vh]">
+                  <ul className="space-y-4">
+                    {(clienteSeleccionado ? ventasClienteSeleccionada : ventasAreaSeleccionada).map(venta => (
+                      <li key={venta.id} className="flex justify-between items-center border-b pb-2">
                         <div>
-                          <p className="font-medium break-words">{venta.cliente || "Sin cliente"}</p>
+                          <p className="font-medium break-words">{venta.cliente || venta.area || "Sin dato"}</p>
                           <p className="text-xs text-gray-500">
-                            {convertirFechaFactura(venta.fechaFactura).toLocaleDateString(
-                              "es-PE"
-                            )}
+                            {convertirFechaFactura(venta.fechaFactura).toLocaleDateString("es-PE")}
                           </p>
                         </div>
                         <span className="font-semibold">
-                          {venta.moneda}{" "}
-                          {venta.total.toLocaleString("es-PE", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
+                          S/ {(
+                            venta.moneda === "$" ? ((venta.total || 0) * (tipoCambio ?? 0)) : (venta.total || 0)
+                          ).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </li>
                     ))}
@@ -512,7 +561,7 @@ export const SeguimientoVentas = () => {
                 </div>
 
                 <button
-                  onClick={() => setModalVisible(false)}
+                  onClick={() => { setModalVisible(false); setClienteSeleccionado(""); setVentasClienteSeleccionada([]); setAreaSeleccionada(""); setVentasAreaSeleccionada([]); }}
                   className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors flex-shrink-0"
                 >
                   Cerrar
