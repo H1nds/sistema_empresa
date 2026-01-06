@@ -46,7 +46,7 @@ export const Sidebar = () => {
                                 <div className="ml-4 pl-4 border-l border-gray-700 mt-1 space-y-1">
                                     <NavLink to="/" className={linkClass}>
                                         <LayoutDashboard size={18} />
-                                        Gestión
+                                        GestiÃ³n
                                     </NavLink>
                                     <NavLink to="/ventas/seguimiento" className={linkClass}>
                                         <PieChart size={18} />

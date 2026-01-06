@@ -19,7 +19,7 @@ export const ModalNuevaVenta = ({ isOpen, onClose, onSubmit }: Props) => {
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        // Campos que deben ser numÈricos
+        // Campos que deben ser num√©ricos
         const isNumber = ["plazoDePago", "abonoCtaCte", "igvdeducible", "subtotal", "igv", "total"].includes(name);
 
         setFormData(prev => ({
@@ -75,7 +75,7 @@ export const ModalNuevaVenta = ({ isOpen, onClose, onSubmit }: Props) => {
                         </div>
 
                         <form onSubmit={handleSubmit} className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-                            {/* SecciÛn 1: InformaciÛn General */}
+                            {/* Secci√≥n 1: Informaci√≥n General */}
                             <div className="col-span-full md:col-span-1 space-y-4">
                                 <h3 className="text-sm font-bold text-primary-600 uppercase tracking-wider border-b pb-2">Datos Generales</h3>
                                 <div>
@@ -83,18 +83,18 @@ export const ModalNuevaVenta = ({ isOpen, onClose, onSubmit }: Props) => {
                                     <input required name="cliente" value={formData.cliente} onChange={handleChange} className="input-field" placeholder="Nombre del cliente" />
                                 </div>
                                 <div>
-                                    <label className="label-text">¡rea</label>
-                                    <input required name="area" value={formData.area} onChange={handleChange} className="input-field" placeholder="Ej. LogÌstica" />
+                                    <label className="label-text">√Årea</label>
+                                    <input required name="area" value={formData.area} onChange={handleChange} className="input-field" placeholder="Ej. Log√≠stica" />
                                 </div>
                                 <div>
                                     <label className="label-text">Servicio</label>
-                                    <input required name="servicio" value={formData.servicio} onChange={handleChange} className="input-field" placeholder="DescripciÛn del servicio" />
+                                    <input required name="servicio" value={formData.servicio} onChange={handleChange} className="input-field" placeholder="Descripci√≥n del servicio" />
                                 </div>
                             </div>
 
-                            {/* SecciÛn 2: FacturaciÛn */}
+                            {/* Secci√≥n 2: Facturaci√≥n */}
                             <div className="col-span-full md:col-span-1 space-y-4">
-                                <h3 className="text-sm font-bold text-primary-600 uppercase tracking-wider border-b pb-2">FacturaciÛn</h3>
+                                <h3 className="text-sm font-bold text-primary-600 uppercase tracking-wider border-b pb-2">Facturaci√≥n</h3>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
                                         <label className="label-text">Moneda</label>
@@ -104,7 +104,7 @@ export const ModalNuevaVenta = ({ isOpen, onClose, onSubmit }: Props) => {
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="label-text">N∞ Comprobante</label>
+                                        <label className="label-text">N¬∞ Comprobante</label>
                                         <input required name="comprobante" value={formData.comprobante} onChange={handleChange} className="input-field" />
                                     </div>
                                 </div>
@@ -119,12 +119,12 @@ export const ModalNuevaVenta = ({ isOpen, onClose, onSubmit }: Props) => {
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="label-text">Plazo Pago (DÌas)</label>
+                                    <label className="label-text">Plazo Pago (D√≠as)</label>
                                     <input type="number" name="plazoDePago" value={formData.plazoDePago} onChange={handleChange} className="input-field" />
                                 </div>
                             </div>
 
-                            {/* SecciÛn 3: Importes y Fechas */}
+                            {/* Secci√≥n 3: Importes y Fechas */}
                             <div className="col-span-full md:col-span-1 space-y-4">
                                 <h3 className="text-sm font-bold text-primary-600 uppercase tracking-wider border-b pb-2">Importes</h3>
                                 <div className="grid grid-cols-3 gap-2">
