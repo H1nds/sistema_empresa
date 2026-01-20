@@ -7,13 +7,19 @@ import { VentasStats } from "../components/ventas/VentasStats";
 import { ModalNuevaVenta } from "../components/ventas/ModalNuevaVenta";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
+import type { Venta } from "../types/types"; // Importamos el tipo para no tener errores
 
 export const Ventas = () => {
+    // Traemos editarVenta del hook (asegúrate que tu hook lo exporte)
     const { ventas, order, loading, agregarVenta, eliminarVenta, editarVenta, reordenarVentas } = useVentas();
+
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
 
-    // Lógica de filtrado
+    // ESTADO PARA LA EDICIÓN
+    const [ventaEditar, setVentaEditar] = useState<Venta | null>(null);
+
+    // Filtrado
     const filteredVentas = ventas.filter(v =>
         v.cliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
         v.comprobante.toLowerCase().includes(searchTerm.toLowerCase())
@@ -29,13 +35,39 @@ export const Ventas = () => {
         saveAs(data, "Reporte_Ventas.xlsx");
     };
 
+    // --- LÓGICA DE EDICIÓN ---
+
+    // 1. Abrir modal para crear (limpio)
+    const handleNuevaVenta = () => {
+        setVentaEditar(null); // Limpiamos edición anterior
+        setIsModalOpen(true);
+    };
+
+    // 2. Abrir modal para editar (con datos)
+    const handleEditarClick = (venta: Venta) => {
+        setVentaEditar(venta);
+        setIsModalOpen(true);
+    };
+
+    // 3. Guardar (Decide si crea o edita)
+    const handleGuardar = async (data: Omit<Venta, 'id'>) => {
+        if (ventaEditar) {
+            // Si hay ventaEditar, actualizamos
+            await editarVenta(ventaEditar.id, data);
+        } else {
+            // Si no, creamos nueva
+            await agregarVenta(data);
+        }
+        setIsModalOpen(false);
+        setVentaEditar(null);
+    };
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
         >
-            {/* Header de la sección */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Gestión de Ventas</h1>
@@ -45,16 +77,15 @@ export const Ventas = () => {
                     <button onClick={handleExportExcel} className="btn-secondary flex-1 md:flex-none">
                         <Download size={18} /> Exportar
                     </button>
-                    <button onClick={() => setIsModalOpen(true)} className="btn-primary flex-1 md:flex-none">
+                    {/* Usamos handleNuevaVenta aquí */}
+                    <button onClick={handleNuevaVenta} className="btn-primary flex-1 md:flex-none">
                         <Plus size={18} /> Nueva Venta
                     </button>
                 </div>
             </div>
 
-            {/* Tarjetas de Estadísticas */}
             <VentasStats ventas={ventas} />
 
-            {/* Barra de Herramientas */}
             <div className="card p-2 flex gap-4 items-center">
                 <div className="relative flex-1">
                     <input
@@ -70,7 +101,6 @@ export const Ventas = () => {
                 </button>
             </div>
 
-            {/* Tabla */}
             <div className="card overflow-hidden">
                 {loading ? (
                     <div className="p-10 text-center animate-pulse text-gray-400">Cargando datos...</div>
@@ -84,16 +114,16 @@ export const Ventas = () => {
                             }
                         }}
                         onDelete={eliminarVenta}
-                        onEdit={editarVenta}
+                        onEdit={handleEditarClick} // <--- Pasamos la función de editar
                     />
                 )}
             </div>
 
-            {/* Modal */}
             <ModalNuevaVenta
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                onSubmit={agregarVenta}
+                onSubmit={handleGuardar} // <--- Pasamos la función inteligente
+                initialData={ventaEditar} // <--- Pasamos los datos a editar
             />
         </motion.div>
     );
