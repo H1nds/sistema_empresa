@@ -55,7 +55,7 @@ export const ModalNuevaVenta = ({ isOpen, onClose, onSubmit, initialData }: Prop
             <input
                 type={type}
                 name={name}
-                value={formData[name as keyof Venta] || ""}
+                value={(formData[name as keyof Venta] as string | number) || ""}
                 onChange={handleChange}
                 required={required}
                 className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all text-sm"

@@ -15,7 +15,7 @@ interface Props {
 }
 
 // Helpers de formato (Moneda y Fecha)
-const formatMoney = (amount: number | string | undefined, currencySymbol: string) => {
+const formatMoney = (amount: number | string | undefined) => {
     const value = Number(amount) || 0;
     return new Intl.NumberFormat('es-PE', {
         style: 'decimal',
@@ -58,7 +58,6 @@ const SortableRow = ({ venta, onDelete, onEdit }: { venta: Venta, onDelete: (id:
     };
 
     const estado = calcularEstado(venta.fechaFactura, Number(venta.plazoDePago) || 0);
-    const simboloMoneda = venta.moneda === "$" ? "USD" : "S/";
     const cellClass = "px-4 py-3 text-sm text-gray-600 whitespace-nowrap border-b border-gray-100";
 
     // --- SOLUCIÓN PROBLEMA 3: Confirmación de eliminar ---
@@ -120,15 +119,15 @@ const SortableRow = ({ venta, onDelete, onEdit }: { venta: Venta, onDelete: (id:
             <td className={`${cellClass} text-center`}>{venta.plazoDePago} días</td>
 
             <td className={cellClass}>{formatDate(venta.fechaPagoCtaCte)}</td>
-            <td className={`${cellClass} text-right`}>{venta.abonoCtaCte ? formatMoney(venta.abonoCtaCte, simboloMoneda) : '-'}</td>
+            <td className={`${cellClass} text-right`}>{venta.abonoCtaCte ? formatMoney(venta.abonoCtaCte) : '-'}</td>
 
             <td className={cellClass}>{formatDate(venta.fechaPagoDeducible)}</td>
-            <td className={`${cellClass} text-right`}>{venta.igvdeducible ? formatMoney(venta.igvdeducible, simboloMoneda) : '-'}</td>
+            <td className={`${cellClass} text-right`}>{venta.igvdeducible ? formatMoney(venta.igvdeducible) : '-'}</td>
 
-            <td className={`${cellClass} text-right font-mono text-gray-500`}>{formatMoney(venta.subtotal, simboloMoneda)}</td>
-            <td className={`${cellClass} text-right font-mono text-gray-500`}>{formatMoney(venta.igv, simboloMoneda)}</td>
+            <td className={`${cellClass} text-right font-mono text-gray-500`}>{formatMoney(venta.subtotal)}</td>
+            <td className={`${cellClass} text-right font-mono text-gray-500`}>{formatMoney(venta.igv)}</td>
             <td className={`${cellClass} text-right font-mono font-bold text-gray-900 bg-gray-50/50`}>
-                {venta.moneda} {formatMoney(venta.total, simboloMoneda)}
+                {venta.moneda} {formatMoney(venta.total)}
             </td>
 
             {/* Columna Sticky: Acciones */}
