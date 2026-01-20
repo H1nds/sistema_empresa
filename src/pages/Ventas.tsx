@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Download, Filter, X, Calendar, RefreshCcw } from "lucide-react";
+import { Plus, Download, Filter, Calendar, RefreshCcw } from "lucide-react";
 import { useVentas } from "../hooks/useVentas";
 import { VentasTable } from "../components/ventas/VentasTable";
 import { VentasStats } from "../components/ventas/VentasStats";
