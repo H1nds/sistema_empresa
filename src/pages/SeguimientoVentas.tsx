@@ -28,10 +28,6 @@ export const SeguimientoVentas = () => {
     const [datosDetalle, setDatosDetalle] = useState<any[]>([]);
     const [tituloDetalle, setTituloDetalle] = useState("");
 
-    // Modales de detalle Cliente
-    const [clienteSeleccionado, setClienteSeleccionado] = useState("");
-    const [ventasClienteSeleccionada, setVentasClienteSeleccionada] = useState<any[]>([]);
-
     // Carga inicial
     useEffect(() => {
         const loadData = async () => {
@@ -179,9 +175,9 @@ export const SeguimientoVentas = () => {
         const ventasFiltradas = filtrarPorFecha(ventas, 'fechaFactura');
         const ventasDeCliente = ventasFiltradas.filter(v => (v.cliente || "Sin cliente") === cliente);
 
-        setVentasClienteSeleccionada(ventasDeCliente);
-        setClienteSeleccionado(cliente);
-        // Reutilizamos el modal de detalle pero con lógica específica
+        // (Líneas borradas aquí porque ya no se usan)
+
+        // Reutilizamos el modal de detalle
         setDatosDetalle(ventasDeCliente.map(v => ({
             concepto: v.servicio,
             montoFinal: v.moneda === "$" ? v.total * tipoCambio : v.total,
@@ -333,7 +329,7 @@ export const SeguimientoVentas = () => {
                                     <LabelList
                                         dataKey="ventas"
                                         position="top"
-                                        formatter={(val: number) => val > 0 ? `S/ ${val.toLocaleString('es-PE', { maximumFractionDigits: 0 })}` : ''}
+                                        formatter={(val: any) => Number(val) > 0 ? `S/ ${Number(val).toLocaleString('es-PE', { maximumFractionDigits: 0 })}` : ''}
                                         style={{ fontSize: '10px', fontWeight: 'bold' }}
                                     />
                                 </Bar>
@@ -341,7 +337,7 @@ export const SeguimientoVentas = () => {
                                     <LabelList
                                         dataKey="gastos"
                                         position="top"
-                                        formatter={(val: number) => val > 0 ? `S/ ${val.toLocaleString('es-PE', { maximumFractionDigits: 0 })}` : ''}
+                                        formatter={(val: any) => Number(val) > 0 ? `S/ ${Number(val).toLocaleString('es-PE', { maximumFractionDigits: 0 })}` : ''}
                                         style={{ fontSize: '10px', fontWeight: 'bold' }}
                                     />
                                 </Bar>
@@ -354,11 +350,11 @@ export const SeguimientoVentas = () => {
                         <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">Moneda de Ingreso</h3>
                         <ResponsiveContainer width="100%" height={250}>
                             <PieChart>
-                                <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ percent }) => `${(percent * 100).toFixed(0)}%`}>
+                                <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ percent }) => `${((percent || 0) * 100).toFixed(0)}%`}>
                                     <Cell fill="#10b981" /><Cell fill="#3b82f6" />
                                 </Pie>
                                 {/* PUNTO 3: Corregido tooltip para mostrar símbolo $ o S/ */}
-                                <Tooltip formatter={(value: number, name: string, props: any) => {
+                                <Tooltip formatter={(value: number, _name: string, props: any) => {
                                     const symbol = props.payload.moneda; // Obtenemos el símbolo del payload
                                     return `${symbol} ${value.toLocaleString('es-PE', { minimumFractionDigits: 2 })}`;
                                 }} />

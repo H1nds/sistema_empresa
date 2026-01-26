@@ -1,13 +1,12 @@
 import { useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import {
-    LayoutDashboard, Users, Package, ChevronDown, ChevronRight,
+    Users, Package, ChevronDown, ChevronRight,
     PieChart, Wallet, DollarSign, Briefcase
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export const Sidebar = () => {
-    const location = useLocation();
 
     // Estado para submenús
     const [openMenus, setOpenMenus] = useState<{ [key: string]: boolean }>({

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Pencil, Wallet, Search, TrendingDown, Inbox } from "lucide-react"; // Inbox añadido
+import { Plus, Trash2, Pencil, Search, TrendingDown, Inbox } from "lucide-react"; // Inbox añadido
 import Swal from 'sweetalert2';
 import { useGastos } from "../hooks/useGastos";
 import type { Gasto } from "../types/types";
