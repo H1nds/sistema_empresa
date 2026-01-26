@@ -20,3 +20,13 @@ export interface Venta {
     position?: number;
     fechaCreacion?: Timestamp;
 }
+export interface Gasto {
+    id: string;
+    descripcion: string; // En qué se gastó
+    area: string;        // P. Audiovisual, Talleres, etc.
+    monto: number;
+    fecha: string;       // Fecha del gasto
+    responsable: string; // Quién hizo el gasto
+    tipo: "Fijo" | "Variable";
+    fechaCreacion?: any;
+}
