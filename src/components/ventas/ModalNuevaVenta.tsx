@@ -7,7 +7,7 @@ interface Props {
     isOpen: boolean;
     onClose: () => void;
     onSubmit: (venta: Omit<Venta, 'id'>) => Promise<void>;
-    initialData?: Venta | null; // Nueva propiedad opcional para editar
+    initialData?: Venta | null;
 }
 
 const INITIAL_STATE = {
@@ -20,14 +20,11 @@ const INITIAL_STATE = {
 export const ModalNuevaVenta = ({ isOpen, onClose, onSubmit, initialData }: Props) => {
     const [formData, setFormData] = useState<Partial<Venta>>(INITIAL_STATE);
 
-    // Efecto: Cuando se abre el modal o cambia initialData, actualizamos el formulario
     useEffect(() => {
         if (isOpen) {
             if (initialData) {
-                // Modo Edición: Cargar datos
                 setFormData({ ...initialData });
             } else {
-                // Modo Creación: Limpiar formulario
                 setFormData(INITIAL_STATE);
             }
         }
@@ -48,16 +45,18 @@ export const ModalNuevaVenta = ({ isOpen, onClose, onSubmit, initialData }: Prop
         onClose();
     };
 
-    // Helper para inputs
+    // Helper para inputs con tipo seguro para evitar errores de TS
     const Input = ({ label, name, type = "text", required = false, className = "" }: any) => (
         <div className={className}>
             <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">{label}</label>
             <input
                 type={type}
                 name={name}
+                // Solución al error de TS: forzamos el tipo a string o number
                 value={(formData[name as keyof Venta] as string | number) || ""}
                 onChange={handleChange}
                 required={required}
+                step={type === "number" ? "0.01" : undefined} // Permite decimales
                 className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all text-sm"
             />
         </div>
@@ -90,7 +89,7 @@ export const ModalNuevaVenta = ({ isOpen, onClose, onSubmit, initialData }: Prop
                         </div>
 
                         <form onSubmit={handleSubmit} className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-                            {/* Sección 1 */}
+                            {/* Sección 1: DATOS GENERALES */}
                             <div className="col-span-full md:col-span-1 space-y-4">
                                 <h3 className="text-sm font-bold text-primary-600 uppercase tracking-wider border-b pb-2">Datos Generales</h3>
                                 <Input label="Cliente" name="cliente" required />
@@ -98,13 +97,13 @@ export const ModalNuevaVenta = ({ isOpen, onClose, onSubmit, initialData }: Prop
                                 <Input label="Servicio" name="servicio" required />
                             </div>
 
-                            {/* Sección 2 */}
+                            {/* Sección 2: FACTURACIÓN */}
                             <div className="col-span-full md:col-span-1 space-y-4">
                                 <h3 className="text-sm font-bold text-primary-600 uppercase tracking-wider border-b pb-2">Facturación</h3>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
-                                        <label className="label-text">Moneda</label>
-                                        <select name="moneda" value={formData.moneda} onChange={handleChange} className="input-field">
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Moneda</label>
+                                        <select name="moneda" value={formData.moneda} onChange={handleChange} className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:border-primary-500 outline-none text-sm">
                                             <option value="S/">S/</option>
                                             <option value="$">USD</option>
                                         </select>
@@ -118,23 +117,42 @@ export const ModalNuevaVenta = ({ isOpen, onClose, onSubmit, initialData }: Prop
                                 <Input label="Plazo Pago (Días)" name="plazoDePago" type="number" />
                             </div>
 
-                            {/* Sección 3 */}
+                            {/* Sección 3: IMPORTES (Actualizada con los campos faltantes) */}
                             <div className="col-span-full md:col-span-1 space-y-4">
                                 <h3 className="text-sm font-bold text-primary-600 uppercase tracking-wider border-b pb-2">Importes</h3>
+
+                                {/* Totales Principales */}
                                 <div className="grid grid-cols-3 gap-2">
                                     <Input label="Subtotal" name="subtotal" type="number" />
                                     <Input label="IGV" name="igv" type="number" />
-                                    <Input label="Total" name="total" type="number" className="font-bold" />
+                                    <Input label="Total" name="total" type="number" className="font-bold bg-blue-50 text-blue-800" />
                                 </div>
-                                <div className="grid grid-cols-2 gap-3 pt-2">
-                                    <Input label="Pago Cta. Cte" name="fechaPagoCtaCte" type="date" />
-                                    <Input label="Pago Detrac." name="fechaPagoDeducible" type="date" />
+
+                                {/* Grupo: Cuenta Corriente (Fecha y Monto) */}
+                                <div className="pt-2">
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Cuenta Corriente</p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <Input label="F. Abono" name="fechaPagoCtaCte" type="date" />
+                                        <Input label="Monto Abono" name="abonoCtaCte" type="number" />
+                                    </div>
+                                </div>
+
+                                {/* Grupo: Detracciones (Fecha y Monto) */}
+                                <div>
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Detracción</p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <Input label="F. Detrac." name="fechaPagoDeducible" type="date" />
+                                        <Input label="IGV Detrac." name="igvdeducible" type="number" />
+                                    </div>
                                 </div>
                             </div>
 
+                            {/* Botones de Acción */}
                             <div className="col-span-full pt-4 border-t flex justify-end gap-3 bg-gray-50 -mx-6 -mb-6 p-6 mt-4 rounded-b-2xl">
-                                <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
-                                <button type="submit" className="btn-primary">
+                                <button type="button" onClick={onClose} className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm">
+                                    Cancelar
+                                </button>
+                                <button type="submit" className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium text-sm flex items-center gap-2 shadow-lg shadow-primary-500/30">
                                     <Save size={18} /> {initialData ? "Actualizar Cambios" : "Guardar Venta"}
                                 </button>
                             </div>
