@@ -4,6 +4,7 @@ import { Plus, Trash2, Pencil, Search, TrendingDown, Inbox } from "lucide-react"
 import Swal from 'sweetalert2';
 import { useGastos } from "../hooks/useGastos";
 import type { Gasto } from "../types/types";
+import { useTipoCambio } from "../hooks/useTipoCambio";
 
 // --- COMPONENTE INTERNO: MODAL ---
 const ModalGasto = ({ isOpen, onClose, onSubmit, initialData }: any) => {
@@ -109,6 +110,8 @@ export const Gastos = () => {
     const [gastoEditar, setGastoEditar] = useState<Gasto | null>(null);
     const [search, setSearch] = useState("");
     const [tipoCambio, setTipoCambio] = useState<number>(3.85);
+    const { getRate } = useTipoCambio();
+    const tipoCambioGeneral = getRate(); 
 
     // Cargar el tipo de cambio del sistema al iniciar
     useEffect(() => {
@@ -123,7 +126,7 @@ export const Gastos = () => {
 
     // CAMBIO 1: Cálculo del total convirtiendo dólares a soles
     const totalGastosSoles = filteredGastos.reduce((acc, curr) => {
-        const montoEnSoles = curr.moneda === "$" ? (curr.monto * tipoCambio) : curr.monto;
+        const montoEnSoles = curr.moneda === "$" ? (curr.monto * tipoCambioGeneral) : curr.monto;
         return acc + (montoEnSoles || 0);
     }, 0);
 

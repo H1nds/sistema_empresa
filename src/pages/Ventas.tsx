@@ -168,7 +168,7 @@ export const Ventas = () => {
             </div>
 
             {/* Pasamos ventas filtradas a los stats para que los números cambien dinámicamente */}
-            <VentasStats ventas={filteredVentas} />
+            <VentasStats ventas={filteredVentas} filterYear={filterYear} />
 
             {/* Barra de Herramientas y Filtros */}
             <div className="flex gap-4 items-start">
