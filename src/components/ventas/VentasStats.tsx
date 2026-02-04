@@ -1,5 +1,5 @@
 import { Banknote, TrendingUp, CheckCircle2, AlertCircle } from "lucide-react";
-import { Venta } from "../../types/types";
+import type { Venta } from "../../types/types";
 import { useTipoCambio } from "../../hooks/useTipoCambio";
 
 interface Props {
