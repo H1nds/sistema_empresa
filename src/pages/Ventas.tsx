@@ -100,7 +100,7 @@ export const Ventas = () => {
                 "F. Abono CTA. CTE": venta.fechaPagoCtaCte || "-",
                 "Abono CTA. CTE": Number(venta.abonoCtaCte) || 0,
                 "F. Abono CTA. DETRAC": venta.fechaPagoDeducible || "-",
-                "IGV CTA. DETRAC": Number(venta.igvdeducible) || 0,
+                "ABONO DETRAC": Number(venta.igvdeducible) || 0,
                 "Subtotal": Number(venta.subtotal) || 0,
                 "IGV": Number(venta.igv) || 0,
                 "Total": Number(venta.total) || 0

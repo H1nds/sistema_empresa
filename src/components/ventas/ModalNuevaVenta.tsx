@@ -17,6 +17,22 @@ const INITIAL_STATE = {
     fechaPagoCtaCte: "", fechaPagoDeducible: ""
 };
 
+// --- SOLUCIÓN PROBLEMA 1: Componente Input FUERA del componente principal ---
+const InputField = ({ label, name, value, onChange, type = "text", required = false, className = "" }: any) => (
+    <div className={className}>
+        <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">{label}</label>
+        <input
+            type={type}
+            name={name}
+            value={value || ""}
+            onChange={onChange}
+            required={required}
+            step={type === "number" ? "0.01" : undefined}
+            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all text-sm"
+        />
+    </div>
+);
+
 export const ModalNuevaVenta = ({ isOpen, onClose, onSubmit, initialData }: Props) => {
     const [formData, setFormData] = useState<Partial<Venta>>(INITIAL_STATE);
 
@@ -44,23 +60,6 @@ export const ModalNuevaVenta = ({ isOpen, onClose, onSubmit, initialData }: Prop
         await onSubmit(formData as Omit<Venta, 'id'>);
         onClose();
     };
-
-    // Helper para inputs con tipo seguro para evitar errores de TS
-    const Input = ({ label, name, type = "text", required = false, className = "" }: any) => (
-        <div className={className}>
-            <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">{label}</label>
-            <input
-                type={type}
-                name={name}
-                // Solución al error de TS: forzamos el tipo a string o number
-                value={(formData[name as keyof Venta] as string | number) || ""}
-                onChange={handleChange}
-                required={required}
-                step={type === "number" ? "0.01" : undefined} // Permite decimales
-                className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all text-sm"
-            />
-        </div>
-    );
 
     return (
         <AnimatePresence>
@@ -92,9 +91,9 @@ export const ModalNuevaVenta = ({ isOpen, onClose, onSubmit, initialData }: Prop
                             {/* Sección 1: DATOS GENERALES */}
                             <div className="col-span-full md:col-span-1 space-y-4">
                                 <h3 className="text-sm font-bold text-primary-600 uppercase tracking-wider border-b pb-2">Datos Generales</h3>
-                                <Input label="Cliente" name="cliente" required />
-                                <Input label="Área" name="area" required />
-                                <Input label="Servicio" name="servicio" required />
+                                <InputField label="Cliente" name="cliente" value={formData.cliente} onChange={handleChange} required />
+                                <InputField label="Área" name="area" value={formData.area} onChange={handleChange} required />
+                                <InputField label="Servicio" name="servicio" value={formData.servicio} onChange={handleChange} required />
                             </div>
 
                             {/* Sección 2: FACTURACIÓN */}
@@ -108,46 +107,43 @@ export const ModalNuevaVenta = ({ isOpen, onClose, onSubmit, initialData }: Prop
                                             <option value="$">USD</option>
                                         </select>
                                     </div>
-                                    <Input label="N° Comprobante" name="comprobante" required />
+                                    <InputField label="N° Comprobante" name="comprobante" value={formData.comprobante} onChange={handleChange} required />
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <Input label="Fecha Factura" name="fechaFactura" type="date" required />
-                                    <Input label="Mes Servicio" name="mesServicio" required />
+                                    <InputField label="Fecha Factura" name="fechaFactura" type="date" value={formData.fechaFactura} onChange={handleChange} required />
+                                    <InputField label="Mes Servicio" name="mesServicio" value={formData.mesServicio} onChange={handleChange} required />
                                 </div>
-                                <Input label="Plazo Pago (Días)" name="plazoDePago" type="number" />
+                                <InputField label="Plazo Pago (Días)" name="plazoDePago" type="number" value={formData.plazoDePago} onChange={handleChange} />
                             </div>
 
-                            {/* Sección 3: IMPORTES (Actualizada con los campos faltantes) */}
+                            {/* Sección 3: IMPORTES */}
                             <div className="col-span-full md:col-span-1 space-y-4">
                                 <h3 className="text-sm font-bold text-primary-600 uppercase tracking-wider border-b pb-2">Importes</h3>
 
-                                {/* Totales Principales */}
                                 <div className="grid grid-cols-3 gap-2">
-                                    <Input label="Subtotal" name="subtotal" type="number" />
-                                    <Input label="IGV" name="igv" type="number" />
-                                    <Input label="Total" name="total" type="number" className="font-bold bg-blue-50 text-blue-800" />
+                                    <InputField label="Subtotal" name="subtotal" type="number" value={formData.subtotal} onChange={handleChange} />
+                                    <InputField label="IGV" name="igv" type="number" value={formData.igv} onChange={handleChange} />
+                                    <InputField label="Total" name="total" type="number" value={formData.total} onChange={handleChange} className="font-bold bg-blue-50 text-blue-800" />
                                 </div>
 
-                                {/* Grupo: Cuenta Corriente (Fecha y Monto) */}
                                 <div className="pt-2">
                                     <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Cuenta Corriente</p>
                                     <div className="grid grid-cols-2 gap-2">
-                                        <Input label="F. Abono" name="fechaPagoCtaCte" type="date" />
-                                        <Input label="Monto Abono" name="abonoCtaCte" type="number" />
+                                        <InputField label="F. Abono" name="fechaPagoCtaCte" type="date" value={formData.fechaPagoCtaCte} onChange={handleChange} />
+                                        <InputField label="Monto Abono" name="abonoCtaCte" type="number" value={formData.abonoCtaCte} onChange={handleChange} />
                                     </div>
                                 </div>
 
-                                {/* Grupo: Detracciones (Fecha y Monto) */}
                                 <div>
                                     <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Detracción</p>
                                     <div className="grid grid-cols-2 gap-2">
-                                        <Input label="F. Detrac." name="fechaPagoDeducible" type="date" />
-                                        <Input label="IGV Detrac." name="igvdeducible" type="number" />
+                                        <InputField label="F. Detrac." name="fechaPagoDeducible" type="date" value={formData.fechaPagoDeducible} onChange={handleChange} />
+                                        {/* SOLUCIÓN PROBLEMA 2: Cambio de nombre aquí */}
+                                        <InputField label="Abono Detrac." name="igvdeducible" type="number" value={formData.igvdeducible} onChange={handleChange} />
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Botones de Acción */}
                             <div className="col-span-full pt-4 border-t flex justify-end gap-3 bg-gray-50 -mx-6 -mb-6 p-6 mt-4 rounded-b-2xl">
                                 <button type="button" onClick={onClose} className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm">
                                     Cancelar

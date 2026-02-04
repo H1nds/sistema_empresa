@@ -22,11 +22,11 @@ export interface Venta {
 }
 export interface Gasto {
     id: string;
-    descripcion: string; // En qué se gastó
-    area: string;        // P. Audiovisual, Talleres, etc.
+    descripcion: string;
+    area: string;
     monto: number;
-    fecha: string;       // Fecha del gasto
-    responsable: string; // Quién hizo el gasto
+    moneda: string;      // Nuevo: "S/" o "$"
+    fecha: string;       // Ahora guardará "YYYY-MM" (Año-Mes)
     tipo: "Fijo" | "Variable";
     fechaCreacion?: any;
 }

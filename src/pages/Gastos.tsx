@@ -1,24 +1,32 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Pencil, Search, TrendingDown, Inbox } from "lucide-react"; // Inbox añadido
+import { Plus, Trash2, Pencil, Search, TrendingDown, Inbox } from "lucide-react";
 import Swal from 'sweetalert2';
 import { useGastos } from "../hooks/useGastos";
 import type { Gasto } from "../types/types";
 
 // --- COMPONENTE INTERNO: MODAL ---
 const ModalGasto = ({ isOpen, onClose, onSubmit, initialData }: any) => {
+    // Inicializamos moneda en Soles por defecto
     const [form, setForm] = useState<Partial<Gasto>>({
-        descripcion: "", area: "", monto: 0, fecha: "", responsable: "", tipo: "Variable"
+        descripcion: "", area: "", monto: 0, moneda: "S/", fecha: "", tipo: "Variable"
     });
 
-    if (isOpen && initialData && form.id !== initialData.id) {
-        setForm({ ...initialData, id: initialData.id });
-    }
+    // Efecto para cargar datos al editar o limpiar al abrir nuevo
+    useEffect(() => {
+        if (isOpen) {
+            if (initialData) {
+                setForm({ ...initialData });
+            } else {
+                // Reset para nuevo gasto
+                setForm({ descripcion: "", area: "", monto: 0, moneda: "S/", fecha: "", tipo: "Variable" });
+            }
+        }
+    }, [isOpen, initialData]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSubmit(form);
-        setForm({ descripcion: "", area: "", monto: 0, fecha: "", responsable: "", tipo: "Variable" });
         onClose();
     };
 
@@ -36,6 +44,8 @@ const ModalGasto = ({ isOpen, onClose, onSubmit, initialData }: any) => {
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Descripción</label>
                                 <input required className="input-field" value={form.descripcion} onChange={e => setForm({ ...form, descripcion: e.target.value })} placeholder="Ej. Compra de cables" />
                             </div>
+
+                            {/* Fila: Área y Mes/Año */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Área</label>
@@ -49,20 +59,37 @@ const ModalGasto = ({ isOpen, onClose, onSubmit, initialData }: any) => {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Monto (S/)</label>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Mes y Año</label>
+                                    {/* CAMBIO 3: Input type="month" para seleccionar solo mes y año */}
+                                    <input
+                                        type="month"
+                                        required
+                                        className="input-field"
+                                        value={form.fecha}
+                                        onChange={e => setForm({ ...form, fecha: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Fila: Moneda y Monto (CAMBIO 1) */}
+                            <div className="grid grid-cols-3 gap-4">
+                                <div className="col-span-1">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Moneda</label>
+                                    <select
+                                        className="input-field font-bold text-center"
+                                        value={form.moneda}
+                                        onChange={e => setForm({ ...form, moneda: e.target.value })}
+                                    >
+                                        <option value="S/">S/</option>
+                                        <option value="$">USD</option>
+                                    </select>
+                                </div>
+                                <div className="col-span-2">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Monto</label>
                                     <input type="number" step="0.01" required className="input-field" value={form.monto} onChange={e => setForm({ ...form, monto: parseFloat(e.target.value) })} />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Fecha</label>
-                                    <input type="date" required className="input-field" value={form.fecha} onChange={e => setForm({ ...form, fecha: e.target.value })} />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Responsable</label>
-                                    <input className="input-field" value={form.responsable} onChange={e => setForm({ ...form, responsable: e.target.value })} />
-                                </div>
-                            </div>
+
                             <div className="pt-4 flex justify-end gap-2">
                                 <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
                                 <button type="submit" className="btn-primary">Guardar</button>
@@ -81,13 +108,24 @@ export const Gastos = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [gastoEditar, setGastoEditar] = useState<Gasto | null>(null);
     const [search, setSearch] = useState("");
+    const [tipoCambio, setTipoCambio] = useState<number>(3.85);
+
+    // Cargar el tipo de cambio del sistema al iniciar
+    useEffect(() => {
+        const savedTC = localStorage.getItem("tipoCambioSistema");
+        if (savedTC) setTipoCambio(parseFloat(savedTC));
+    }, []);
 
     const filteredGastos = gastos.filter(g =>
         g.descripcion.toLowerCase().includes(search.toLowerCase()) ||
         g.area.toLowerCase().includes(search.toLowerCase())
     );
 
-    const totalGastos = filteredGastos.reduce((acc, curr) => acc + (curr.monto || 0), 0);
+    // CAMBIO 1: Cálculo del total convirtiendo dólares a soles
+    const totalGastosSoles = filteredGastos.reduce((acc, curr) => {
+        const montoEnSoles = curr.moneda === "$" ? (curr.monto * tipoCambio) : curr.monto;
+        return acc + (montoEnSoles || 0);
+    }, 0);
 
     const handleGuardar = async (data: any) => {
         if (gastoEditar) {
@@ -99,36 +137,29 @@ export const Gastos = () => {
         setGastoEditar(null);
     };
 
-    const handleDelete = async (id: string) => { // Agregamos async
+    const handleDelete = async (id: string) => {
         const result = await Swal.fire({
-            title: '¿Eliminar gasto?',
-            text: "Esta acción eliminará el registro permanentemente",
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#ef4444',
-            cancelButtonColor: '#cbd5e1',
-            confirmButtonText: 'Sí, eliminar',
-            cancelButtonText: 'Cancelar'
+            title: '¿Eliminar gasto?', text: "Esta acción es irreversible", icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Sí, eliminar'
         });
 
         if (result.isConfirmed) {
             try {
-                // Llamamos a eliminar y esperamos a que Firebase confirme
                 await eliminarGasto(id);
-
-                // Feedback visual inmediato
-                Swal.fire({
-                    title: '¡Eliminado!',
-                    text: 'El gasto ha sido borrado.',
-                    icon: 'success',
-                    timer: 1500,
-                    showConfirmButton: false
-                });
+                Swal.fire({ title: '¡Eliminado!', icon: 'success', timer: 1500, showConfirmButton: false });
             } catch (error) {
-                console.error("Error al borrar:", error);
-                Swal.fire('Error', 'No se pudo eliminar el gasto.', 'error');
+                console.error(error);
             }
         }
+    };
+
+    // Helper para formatear fecha visualmente (Ej: "Enero 2026")
+    const formatMesAnio = (fechaInput: string) => {
+        if (!fechaInput) return "-";
+        const [year, month] = fechaInput.split('-');
+        const date = new Date(parseInt(year), parseInt(month) - 1);
+        // Capitalizamos la primera letra
+        const texto = date.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' });
+        return texto.charAt(0).toUpperCase() + texto.slice(1);
     };
 
     return (
@@ -148,8 +179,9 @@ export const Gastos = () => {
                 <div className="card p-4 flex items-center gap-4 border-l-4 border-red-500">
                     <div className="p-3 bg-red-50 text-red-600 rounded-full"><TrendingDown size={24} /></div>
                     <div>
-                        <p className="text-xs text-gray-500 uppercase font-bold">Total Gastos (Vista)</p>
-                        <p className="text-2xl font-bold text-gray-900">S/ {totalGastos.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</p>
+                        <p className="text-xs text-gray-500 uppercase font-bold">Total Gastos (Convertido a Soles)</p>
+                        <p className="text-2xl font-bold text-gray-900">S/ {totalGastosSoles.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</p>
+                        <p className="text-[10px] text-gray-400 mt-1">Ref. Dólar: S/ {tipoCambio.toFixed(2)}</p>
                     </div>
                 </div>
             </div>
@@ -172,8 +204,9 @@ export const Gastos = () => {
                             <tr>
                                 <th className="px-6 py-3">Descripción</th>
                                 <th className="px-6 py-3">Área</th>
-                                <th className="px-6 py-3">Fecha</th>
-                                <th className="px-6 py-3">Responsable</th>
+                                <th className="px-6 py-3">Mes/Año</th>
+                                {/* NUEVA COLUMNA */}
+                                <th className="px-6 py-3 text-center">Moneda</th> 
                                 <th className="px-6 py-3 text-right">Monto</th>
                                 <th className="px-6 py-3 text-center">Acciones</th>
                             </tr>
@@ -182,7 +215,6 @@ export const Gastos = () => {
                             {loading ? (
                                 <tr><td colSpan={6} className="p-8 text-center text-gray-400">Cargando...</td></tr>
                             ) : filteredGastos.length === 0 ? (
-                                // ESTADO VACÍO (Soluciona el problema visual de borrar el último)
                                 <tr>
                                     <td colSpan={6} className="p-12 text-center text-gray-400">
                                         <div className="flex flex-col items-center gap-2">
@@ -196,12 +228,21 @@ export const Gastos = () => {
                                     <tr key={gasto.id} className="hover:bg-gray-50 transition-colors">
                                         <td className="px-6 py-3 font-medium text-gray-900">{gasto.descripcion}</td>
                                         <td className="px-6 py-3"><span className="px-2 py-1 bg-gray-100 rounded text-xs text-gray-600 font-medium">{gasto.area}</span></td>
-                                        <td className="px-6 py-3 text-gray-500">{new Date(gasto.fecha + 'T00:00:00').toLocaleDateString('es-PE')}</td>
-                                        <td className="px-6 py-3 text-gray-500">{gasto.responsable || "-"}</td>
-                                        <td className="px-6 py-3 text-right font-bold text-gray-800">S/ {gasto.monto.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</td>
+                                        <td className="px-6 py-3 text-gray-500 capitalize">{formatMesAnio(gasto.fecha)}</td>
+                                        
+                                        {/* NUEVA CELDA: MONEDA VISUAL */}
+                                        <td className="px-6 py-3 text-center">
+                                            <span className={`px-2 py-1 rounded text-xs font-bold ${gasto.moneda === '$' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                {gasto.moneda === '$' ? 'USD' : 'PEN'}
+                                            </span>
+                                        </td>
+
+                                        <td className="px-6 py-3 text-right font-bold text-gray-800">
+                                            {gasto.moneda} {gasto.monto.toLocaleString('es-PE', {minimumFractionDigits: 2})}
+                                        </td>
                                         <td className="px-6 py-3 flex justify-center gap-2">
-                                            <button onClick={() => { setGastoEditar(gasto); setIsModalOpen(true); }} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded"><Pencil size={16} /></button>
-                                            <button onClick={() => handleDelete(gasto.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded"><Trash2 size={16} /></button>
+                                            <button onClick={() => { setGastoEditar(gasto); setIsModalOpen(true); }} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded"><Pencil size={16}/></button>
+                                            <button onClick={() => handleDelete(gasto.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
                                         </td>
                                     </tr>
                                 ))

@@ -87,10 +87,12 @@ export const SeguimientoVentas = () => {
             areasMap[area].ventas += monto;
         });
 
-        // 2. Sumar Gastos
+        // 2. Sumar Gastos (CORREGIDO: Ahora convierte Dólares a Soles)
         gastosFiltrados.forEach(g => {
             const area = g.area || "Sin Área";
-            const monto = Number(g.monto);
+            // AQUI ESTABA EL ERROR: Antes solo sumaba g.monto
+            const monto = g.moneda === "$" ? (Number(g.monto) * tipoCambio) : Number(g.monto);
+
             if (!areasMap[area]) areasMap[area] = { ventas: 0, gastos: 0 };
             areasMap[area].gastos += monto;
         });
