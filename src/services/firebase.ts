@@ -1,6 +1,8 @@
 // src/services/firebase.ts
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBJZ2PnMgrOtzIBcJ669vOnMjmUPayY_wY",
@@ -13,4 +15,8 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+
+// Exportar los servicios
 export const db = getFirestore(app);
+export const auth = getAuth(app);
+export const storage = getStorage(app);
